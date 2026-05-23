@@ -15,7 +15,7 @@ import { useRadioPlayer } from './hooks/useRadioPlayer'
 import { getAuthStatus } from './api/auth'
 
 function MainApp() {
-  const { isLoggedIn, setUser, setShowTranscript, setShowShortcuts } = useStore()
+  const { isLoggedIn, setUser, setShowTranscript, setShowShortcuts, session } = useStore()
   const [checking, setChecking] = useState(true)
 
   // Keyboard shortcuts
@@ -31,10 +31,10 @@ function MainApp() {
       case 't':
       case 'T':
         e.preventDefault()
-        setShowTranscript(true)
+        if (session) setShowTranscript(true)
         break
     }
-  }, [])
+  }, [session])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
