@@ -86,3 +86,18 @@ app.include_router(ws.router)
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/api/settings/voices")
+async def list_voices():
+    """List available Edge TTS voices for Chinese."""
+    return {
+        "voices": [
+            {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓", "gender": "female", "style": "温暖活泼，适合治愈系 DJ"},
+            {"id": "zh-CN-XiaoyiNeural", "name": "晓伊", "gender": "female", "style": "优雅知性，适合爵士/古典 DJ"},
+            {"id": "zh-CN-YunjianNeural", "name": "云健", "gender": "male", "style": "活力青年，适合运动/潮流 DJ"},
+            {"id": "zh-CN-YunxiNeural", "name": "云希", "gender": "male", "style": "成熟稳重，适合晚间新闻风 DJ"},
+            {"id": "zh-CN-YunxiaNeural", "name": "云夏", "gender": "male", "style": "温暖男声，适合深夜陪伴 DJ"},
+            {"id": "zh-CN-XiaochenNeural", "name": "晓辰", "gender": "female", "style": "清脆少女，适合轻快活泼 DJ"},
+        ]
+    }

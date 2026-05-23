@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useStore } from './store'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import LoginModal from './components/Login/LoginModal'
@@ -7,13 +7,39 @@ import RadioPlayer from './components/Player/RadioPlayer'
 import ChatInput from './components/Chat/ChatInput'
 import QueuePanel from './components/Queue/QueuePanel'
 import PlaylistBrowser from './components/Library/PlaylistBrowser'
+import ScriptTranscript from './components/Player/ScriptTranscript'
+import ShortcutHelp from './components/common/ShortcutHelp'
+import MusicProfilePanel from './components/Library/MusicProfile'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useRadioPlayer } from './hooks/useRadioPlayer'
 import { getAuthStatus } from './api/auth'
 
 function MainApp() {
-  const { isLoggedIn, setUser } = useStore()
+  const { isLoggedIn, setUser, setShowTranscript, setShowShortcuts } = useStore()
   const [checking, setChecking] = useState(true)
+
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+
+    switch (e.key) {
+      case '?':
+        e.preventDefault()
+        setShowShortcuts(true)
+        break
+      case 't':
+      case 'T':
+        e.preventDefault()
+        setShowTranscript(true)
+        break
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   // Check backend session on mount (survives page refresh)
   useEffect(() => {
@@ -51,13 +77,14 @@ function MainApp() {
         </div>
       ) : (
         <Layout>
-          <div className="flex gap-6 flex-1 px-4 max-w-7xl mx-auto w-full">
+          <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full">
             <aside className="w-72 flex-shrink-0 hidden lg:block">
-              <div className="sticky top-14 overflow-y-auto max-h-screen py-4">
+              <div className="sticky top-12 sm:top-14 overflow-y-auto max-h-[calc(100vh-3rem)] sm:max-h-[calc(100vh-3.5rem)] py-3 sm:py-4 space-y-4">
                 <PlaylistBrowser />
+                <MusicProfilePanel />
               </div>
             </aside>
-            <main className="flex-1 flex flex-col items-center gap-6 py-6">
+            <main className="flex-1 flex flex-col items-center gap-4 sm:gap-6 py-4 sm:py-6 min-w-0">
               <RadioPlayer />
               <ChatInput />
               <QueuePanel />
@@ -65,6 +92,9 @@ function MainApp() {
           </div>
         </Layout>
       )}
+
+      <ScriptTranscript />
+      <ShortcutHelp />
     </div>
   )
 }

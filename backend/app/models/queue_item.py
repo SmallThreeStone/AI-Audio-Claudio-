@@ -21,6 +21,7 @@ class QueueItem(Base):
     stream_url_expires: Mapped[datetime.datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     error_message: Mapped[str | None] = mapped_column(Text)
+    user_feedback: Mapped[str | None] = mapped_column(String(20))  # 'liked' or 'disliked'
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

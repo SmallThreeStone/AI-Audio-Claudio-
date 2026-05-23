@@ -45,8 +45,9 @@ export interface QueueItem {
   tts_audio_url?: string
   intro_text?: string
   stream_url?: string
-  status: 'pending' | 'tts_generating' | 'ready' | 'error'
+  status: 'pending' | 'tts_generating' | 'ready' | 'error' | 'skipped' | 'completed'
   error_message?: string
+  user_feedback?: 'liked' | 'disliked'
 }
 
 export interface DJSession {
@@ -54,9 +55,35 @@ export interface DJSession {
   user_request: string
   session_theme?: string
   status: 'pending' | 'generating' | 'refilling' | 'ready' | 'playing' | 'completed' | 'error'
+  persona?: string
   total_items: number
   played_items: number
   created_at: string
+}
+
+export interface DJPersona {
+  id: string
+  name: string
+  emoji: string
+  tagline: string
+  voice: string
+  style: string
+}
+
+export interface TTSVoice {
+  id: string
+  name: string
+  gender: string
+  style: string
+}
+
+export interface MusicProfile {
+  total_songs: number
+  total_likes: number
+  genres: { name: string; count: number }[]
+  moods: { name: string; count: number }[]
+  bpm_buckets: { name: string; count: number }[]
+  top_artists: { name: string; count: number }[]
 }
 
 export type WSMessageType =

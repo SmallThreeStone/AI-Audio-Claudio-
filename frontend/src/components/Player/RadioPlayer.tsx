@@ -2,6 +2,7 @@ import { useStore } from '../../store'
 import VinylDisc from './VinylDisc'
 import NowPlaying from './NowPlaying'
 import PlayerControls from './PlayerControls'
+import SleepTimer from './SleepTimer'
 
 const STAGES = [
   { key: 'analyzing', label: 'AI 感受你的心情' },
@@ -69,6 +70,7 @@ export default function RadioPlayer() {
 
       <NowPlaying />
       <PlayerControls />
+      <SleepTimer />
     </div>
   )
 }

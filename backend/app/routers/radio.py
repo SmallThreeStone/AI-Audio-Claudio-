@@ -1,6 +1,8 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 
 from ..database import get_session
@@ -8,7 +10,7 @@ from ..models.user import User
 from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
 from ..models.song import Song
-from ..services.dj_engine import generate_radio_script
+from ..services.dj_engine import generate_radio_script, DJ_PERSONAS
 from ..services.queue_manager import build_queue_from_script, check_refill
 from ..routers.ws import ws_manager
 
@@ -17,6 +19,12 @@ router = APIRouter(prefix="/api/radio", tags=["radio"])
 
 class RadioRequest(BaseModel):
     text: str
+    persona: str = "xiaoyu"
+
+
+class FeedbackRequest(BaseModel):
+    queue_item_id: int
+    feedback: str  # 'liked' or 'disliked'
 
 
 @router.post("/request")
@@ -38,6 +46,7 @@ async def request_radio(body: RadioRequest, session: AsyncSession = Depends(get_
         user_id=user.id,
         user_request=body.text,
         status="generating",
+        persona=body.persona,
     )
     session.add(dj_session)
     await session.commit()
@@ -55,7 +64,7 @@ async def request_radio(body: RadioRequest, session: AsyncSession = Depends(get_
 
     try:
         await _progress("analyzing", "AI 正在感受你的心情...")
-        script = await generate_radio_script(session, body.text, dj_session.id)
+        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
         await session.commit()
@@ -86,6 +95,7 @@ async def list_sessions(session: AsyncSession = Depends(get_session)):
             "user_request": s.user_request,
             "session_theme": s.session_theme,
             "status": s.status,
+            "persona": s.persona or "xiaoyu",
             "total_items": s.total_items,
             "played_items": s.played_items,
             "created_at": s.created_at.isoformat() if s.created_at else None,
@@ -162,6 +172,7 @@ def _session_status_msg(s: DJSession) -> dict:
             "user_request": s.user_request,
             "session_theme": s.session_theme,
             "status": s.status,
+            "persona": s.persona or "xiaoyu",
             "total_items": s.total_items,
             "played_items": s.played_items,
             "created_at": s.created_at.isoformat() if s.created_at else None,
@@ -180,6 +191,126 @@ def _status_message(status: str) -> str:
         "completed": "本期电台已结束",
         "error": "出错了",
     }.get(status, status)
+
+
+@router.get("/personas")
+async def list_personas():
+    """List available DJ personas."""
+    return [
+        {
+            "id": pid,
+            "name": p["name"],
+            "emoji": p["emoji"],
+            "tagline": p["tagline"],
+            "voice": p["voice"],
+            "style": p["style"],
+        }
+        for pid, p in DJ_PERSONAS.items()
+    ]
+
+
+@router.post("/feedback")
+async def record_feedback(body: FeedbackRequest, session: AsyncSession = Depends(get_session)):
+    """Record user feedback (like/dislike) for a queue item and its song."""
+    result = await session.execute(select(QueueItem).where(QueueItem.id == body.queue_item_id))
+    qi = result.scalar()
+    if not qi:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    qi.user_feedback = body.feedback
+
+    # Also update song aggregate counts
+    if qi.song_id:
+        song_result = await session.execute(select(Song).where(Song.id == qi.song_id))
+        song = song_result.scalar()
+        if song:
+            if body.feedback == "liked":
+                song.like_count = (song.like_count or 0) + 1
+            elif body.feedback == "disliked":
+                song.dislike_count = (song.dislike_count or 0) + 1
+
+    await session.commit()
+    return {"status": "ok"}
+
+
+@router.get("/profile")
+async def music_profile(session: AsyncSession = Depends(get_session)):
+    """Get user's music taste profile for visualization."""
+    # Genre distribution
+    genre_result = await session.execute(
+        select(Song.genre, func.count())
+        .where(Song.genre != None)
+        .group_by(Song.genre)
+        .order_by(func.count().desc())
+        .limit(12)
+    )
+    genres = [{"name": g[0], "count": g[1]} for g in genre_result.all()]
+
+    # Mood distribution (from mood_tags JSON)
+    songs_with_moods = await session.execute(
+        select(Song.mood_tags).where(Song.mood_tags != None)
+    )
+    mood_count = {}
+    import json
+    for (tags,) in songs_with_moods.all():
+        try:
+            tag_list = json.loads(tags) if isinstance(tags, str) else tags
+            for t in tag_list:
+                mood_count[t] = mood_count.get(t, 0) + 1
+        except (json.JSONDecodeError, TypeError):
+            pass
+    moods = sorted(
+        [{"name": k, "count": v} for k, v in mood_count.items()],
+        key=lambda x: x["count"],
+        reverse=True,
+    )[:10]
+
+    # BPM distribution
+    bpm_result = await session.execute(
+        select(Song.bpm, func.count())
+        .where(Song.bpm != None)
+        .group_by(Song.bpm)
+    )
+    bpm_data = [(b[0] or 0, b[1]) for b in bpm_result.all()]
+    # Bucket BPM into ranges
+    bpm_buckets = {"慢 (<80)": 0, "中慢 (80-100)": 0, "中速 (100-120)": 0, "中快 (120-140)": 0, "快 (>140)": 0}
+    for bpm, cnt in bpm_data:
+        if bpm < 80:
+            bpm_buckets["慢 (<80)"] += cnt
+        elif bpm < 100:
+            bpm_buckets["中慢 (80-100)"] += cnt
+        elif bpm < 120:
+            bpm_buckets["中速 (100-120)"] += cnt
+        elif bpm < 140:
+            bpm_buckets["中快 (120-140)"] += cnt
+        else:
+            bpm_buckets["快 (>140)"] += cnt
+
+    # Top artists
+    artist_result = await session.execute(
+        select(Song.artist, func.count())
+        .where(Song.artist != None)
+        .group_by(Song.artist)
+        .order_by(func.count().desc())
+        .limit(10)
+    )
+    artists = [{"name": a[0], "count": a[1]} for a in artist_result.all()]
+
+    # Totals
+    total_result = await session.execute(select(func.count()).select_from(Song))
+    total_songs = total_result.scalar() or 0
+
+    liked_result = await session.execute(select(func.sum(Song.like_count)).select_from(Song))
+    total_likes = liked_result.scalar() or 0
+
+    return {
+        "total_songs": total_songs,
+        "total_likes": total_likes,
+        "genres": genres,
+        "moods": moods,
+        "bpm_buckets": [{"name": k, "count": v} for k, v in bpm_buckets.items()],
+        "top_artists": artists,
+    }
 
 
 async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
@@ -205,6 +336,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
             "stream_url": qi.stream_url,
             "status": qi.status,
             "error_message": qi.error_message,
+            "user_feedback": qi.user_feedback,
         }
 
         if qi.song_id:
@@ -225,6 +357,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
             "user_request": s.user_request,
             "session_theme": s.session_theme,
             "status": s.status,
+            "persona": s.persona or "xiaoyu",
             "total_items": s.total_items,
             "played_items": s.played_items,
             "created_at": s.created_at.isoformat() if s.created_at else None,

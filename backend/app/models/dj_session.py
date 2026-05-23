@@ -14,6 +14,7 @@ class DJSession(Base):
     ai_response_raw: Mapped[str | None] = mapped_column(Text)
     session_theme: Mapped[str | None] = mapped_column(String(256))
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    persona: Mapped[str | None] = mapped_column(String(64), default="xiaoyu")
     total_items: Mapped[int] = mapped_column(Integer, default=0)
     played_items: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime.datetime] = mapped_column(

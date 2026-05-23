@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useStore } from '../../store'
 import { requestRadio } from '../../api/radio'
+import PersonaSelector from './PersonaSelector'
 
 const QUICK_PROMPTS = [
   '深夜加班，来点能撑住的',
@@ -13,7 +14,7 @@ const QUICK_PROMPTS = [
 export default function ChatInput() {
   const [text, setText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { setIsGenerating, isGenerating } = useStore()
+  const { setIsGenerating, isGenerating, selectedPersona } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async (inputText?: string) => {
@@ -25,7 +26,7 @@ export default function ChatInput() {
     setText('')
 
     try {
-      await requestRadio(trimmed)
+      await requestRadio(trimmed, selectedPersona)
     } catch (e) {
       console.error('Failed to request radio:', e)
       setIsGenerating(false)
@@ -44,6 +45,11 @@ export default function ChatInput() {
 
   return (
     <div className="w-full max-w-md">
+      {/* Persona selector */}
+      <div className="flex justify-center mb-2">
+        <PersonaSelector />
+      </div>
+
       <div className="flex items-center gap-2 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl px-4 py-3 focus-within:border-[var(--color-radio-accent)] transition-colors">
         <input
           ref={inputRef}

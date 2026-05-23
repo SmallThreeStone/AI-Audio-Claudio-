@@ -108,3 +108,44 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .vinyl-disc {
+    width: clamp(120px, 50vw, 180px) !important;
+    height: clamp(120px, 50vw, 180px) !important;
+  }
+
+  .tonearm-container {
+    top: -15px;
+    right: -40px;
+    width: 70px;
+    height: 100px;
+  }
+
+  .radio-bg {
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(233, 69, 96, 0.06) 0%, transparent 50%),
+      var(--color-radio-bg);
+  }
+}
+
+/* Slide-in animation for transcript panel */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+/* Fade scale for modals */
+@keyframes fade-scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.fade-scale-in {
+  animation: fade-scale-in 0.2s ease-out;
+}

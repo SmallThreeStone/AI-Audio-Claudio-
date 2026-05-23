@@ -2,7 +2,7 @@ import { useStore } from '../../store'
 import { logout } from '../../api/auth'
 
 export default function Header() {
-  const { user, isPlaying, setUser } = useStore()
+  const { user, isPlaying, session, setUser, setShowTranscript, setShowShortcuts } = useStore()
 
   const handleLogout = async () => {
     await logout()
@@ -11,18 +11,18 @@ export default function Header() {
 
   return (
     <header className="border-b border-[var(--color-radio-border)] bg-[var(--color-radio-surface)]/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-bold">C</span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center">
+              <span className="text-white text-xs sm:text-sm font-bold">C</span>
             </div>
-            <span className="text-lg font-bold tracking-wide">
+            <span className="text-base sm:text-lg font-bold tracking-wide">
               Claudio<span className="text-[var(--color-radio-muted)] font-normal"> FM</span>
             </span>
           </div>
           {isPlaying && (
-            <div className="equalizer ml-2">
+            <div className="equalizer ml-1 sm:ml-2">
               <div className="bar" />
               <div className="bar" />
               <div className="bar" />
@@ -32,21 +32,39 @@ export default function Header() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          <div className="hidden sm:flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400" />
             <span className="text-sm text-[var(--color-radio-muted)]">ON AIR</span>
           </div>
 
+          {session && (
+            <button
+              onClick={() => setShowTranscript(true)}
+              className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors px-1"
+              title="查看 DJ 脚本 (T)"
+            >
+              脚本
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowShortcuts(true)}
+            className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors px-1"
+            title="快捷键 (?)"
+          >
+            ?
+          </button>
+
           {user && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {user.avatar_url && (
-                <img src={user.avatar_url} alt="" className="w-7 h-7 rounded-full" />
+                <img src={user.avatar_url} alt="" className="w-6 h-6 sm:w-7 sm:h-7 rounded-full" />
               )}
-              <span className="text-sm">{user.nickname}</span>
+              <span className="text-xs sm:text-sm hidden sm:inline">{user.nickname}</span>
               <button
                 onClick={handleLogout}
-                className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] ml-1"
+                className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]"
               >
                 退出
               </button>

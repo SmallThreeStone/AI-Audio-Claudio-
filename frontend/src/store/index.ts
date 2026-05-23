@@ -43,7 +43,22 @@ interface QueueSlice {
   setGenerationProgress: (stage: string, message: string) => void
 }
 
-export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice>((set) => ({
+interface SettingsSlice {
+  selectedPersona: string
+  sleepTimerMinutes: number
+  sleepTimerEnd: number | null
+  showShortcuts: boolean
+  showTranscript: boolean
+  showSettings: boolean
+  setSelectedPersona: (persona: string) => void
+  setSleepTimer: (minutes: number) => void
+  clearSleepTimer: () => void
+  setShowShortcuts: (show: boolean) => void
+  setShowTranscript: (show: boolean) => void
+  setShowSettings: (show: boolean) => void
+}
+
+export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice & SettingsSlice>((set) => ({
   // Auth
   user: null,
   isLoggedIn: false,
@@ -81,4 +96,18 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   setSession: (session) => set({ session }),
   setIsGenerating: (isGenerating) => set({ isGenerating }),
   setGenerationProgress: (stage, message) => set({ generationStage: stage, generationMessage: message }),
+
+  // Settings
+  selectedPersona: 'xiaoyu',
+  sleepTimerMinutes: 0,
+  sleepTimerEnd: null,
+  showShortcuts: false,
+  showTranscript: false,
+  showSettings: false,
+  setSelectedPersona: (persona) => set({ selectedPersona: persona }),
+  setSleepTimer: (minutes) => set({ sleepTimerMinutes: minutes, sleepTimerEnd: Date.now() + minutes * 60 * 1000 }),
+  clearSleepTimer: () => set({ sleepTimerMinutes: 0, sleepTimerEnd: null }),
+  setShowShortcuts: (show) => set({ showShortcuts: show }),
+  setShowTranscript: (show) => set({ showTranscript: show }),
+  setShowSettings: (show) => set({ showSettings: show }),
 }))

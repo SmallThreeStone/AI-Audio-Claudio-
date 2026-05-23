@@ -3,13 +3,22 @@ from sqlalchemy import select
 
 from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
-from ..services.dj_engine import generate_continuation
+from ..services.dj_engine import generate_continuation, DJ_PERSONAS
 from ..services.tts_engine import generate_tts_batch
 from ..services.audio_proxy import get_song_url
 
 
 async def build_queue_from_script(db: AsyncSession, script: dict, session_id: int, start_position: int = 0, progress_callback=None):
     """Process a radio script: create QueueItems, generate TTS, resolve URLs."""
+    # Get session persona for voice selection
+    persona = "xiaoyu"
+    session_result = await db.execute(select(DJSession).where(DJSession.id == session_id))
+    s = session_result.scalar()
+    if s and s.persona:
+        persona = s.persona
+    p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
+    voice = p["voice"]
+
     position = start_position
     tts_tasks = []
     song_tasks = []  # (item_id, song_id)
@@ -22,7 +31,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
             position=position,
             item_type="tts_intro",
             tts_text=greeting,
-            tts_voice="zh-CN-XiaoxiaoNeural",
+            tts_voice=voice,
             status="tts_generating",
         )
         db.add(item)
@@ -59,7 +68,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
                 position=position,
                 item_type="tts_bridge",
                 tts_text=entry["text"],
-                tts_voice="zh-CN-XiaoxiaoNeural",
+                tts_voice=voice,
                 status="tts_generating",
             )
             db.add(item)
@@ -75,7 +84,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
             position=position,
             item_type="tts_outro",
             tts_text=closing,
-            tts_voice="zh-CN-XiaoxiaoNeural",
+            tts_voice=voice,
             status="tts_generating",
         )
         db.add(item)
@@ -149,7 +158,7 @@ async def check_refill(db: AsyncSession, session_id: int) -> bool:
     await db.commit()
 
     try:
-        script = await generate_continuation(db, session.user_request, recent_ids, count=5)
+        script = await generate_continuation(db, session.user_request, recent_ids, count=5, persona=session.persona or "xiaoyu")
         await build_queue_from_script(db, script, session_id, start_position=session.total_items)
 
         # Broadcast updated queue (lazy import to avoid circular dependency)

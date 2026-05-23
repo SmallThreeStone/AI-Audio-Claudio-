@@ -1,4 +1,5 @@
 import { useStore } from '../../store'
+import FeedbackButtons from './FeedbackButtons'
 
 export default function NowPlaying() {
   const { currentItem, isPlaying } = useStore()
@@ -46,6 +47,7 @@ export default function NowPlaying() {
           <p className="text-sm text-[var(--color-radio-muted)]">
             {currentItem.artist || '未知艺术家'}
           </p>
+          <FeedbackButtons />
         </div>
       )}
     </div>
