@@ -1,0 +1,13 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+backend/data/radio.db
+backend/data/cookies.json
+backend/data/tts_cache/*.mp3
+.claude/
+*.log

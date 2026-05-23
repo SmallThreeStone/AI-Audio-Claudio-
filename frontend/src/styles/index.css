@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-radio-bg: #0a0a1a;
+  --color-radio-surface: #12122a;
+  --color-radio-card: #1a1a3e;
+  --color-radio-accent: #e94560;
+  --color-radio-accent-dim: #b8304f;
+  --color-radio-gold: #f0c060;
+  --color-radio-text: #e8e8f0;
+  --color-radio-muted: #8888aa;
+  --color-radio-border: #2a2a4a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--color-radio-bg);
+  color: var(--color-radio-text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-radio-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-radio-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-radio-muted);
+}

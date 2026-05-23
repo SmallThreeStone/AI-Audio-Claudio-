@@ -1,0 +1,110 @@
+/* Vinyl disc animation — responsive sizing */
+.vinyl-disc {
+  width: clamp(160px, 35vw, 260px);
+  height: clamp(160px, 35vw, 260px);
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle at center,
+    #1a1a1a 0px,
+    #2a2a2a 2px,
+    #1a1a1a 4px
+  );
+  box-shadow: 0 0 40px rgba(233, 69, 96, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.5);
+  position: relative;
+  transition: transform 0.5s ease;
+}
+
+.vinyl-disc.playing {
+  animation: spin 3s linear infinite;
+}
+
+.vinyl-disc.paused {
+  animation-play-state: paused;
+}
+
+.vinyl-disc::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 29%;
+  height: 29%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #e94560, #8b0000);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Tonearm */
+.tonearm-container {
+  position: absolute;
+  top: -20px;
+  right: -60px;
+  width: 100px;
+  height: 140px;
+  transform-origin: top right;
+  transition: transform 0.4s ease;
+}
+
+.tonearm-container.active {
+  transform: rotate(15deg);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Glow pulse for active states */
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 5px rgba(233, 69, 96, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(233, 69, 96, 0.6); }
+}
+
+/* Equalizer bars */
+.equalizer {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+}
+
+.equalizer .bar {
+  width: 3px;
+  background: var(--color-radio-accent);
+  border-radius: 1px;
+  animation: equalize 1s ease-in-out infinite;
+}
+
+.equalizer .bar:nth-child(1) { animation-delay: 0.0s; height: 60%; }
+.equalizer .bar:nth-child(2) { animation-delay: 0.2s; height: 100%; }
+.equalizer .bar:nth-child(3) { animation-delay: 0.4s; height: 40%; }
+.equalizer .bar:nth-child(4) { animation-delay: 0.6s; height: 80%; }
+.equalizer .bar:nth-child(5) { animation-delay: 0.3s; height: 50%; }
+
+@keyframes equalize {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.3); }
+}
+
+/* Subtle background shimmer */
+.radio-bg {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(233, 69, 96, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 50%, rgba(100, 100, 255, 0.03) 0%, transparent 50%),
+    var(--color-radio-bg);
+}
+
+/* DJ text fade in */
+.dj-text-enter {
+  animation: dj-fade-in 0.5s ease-out;
+}
+
+@keyframes dj-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

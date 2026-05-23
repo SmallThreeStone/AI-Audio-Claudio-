@@ -1,0 +1,146 @@
+import { useEffect, useRef, useCallback } from 'react'
+import { Howl } from 'howler'
+import { useStore } from '../store'
+import { radioWS } from '../api/ws'
+
+export function useRadioPlayer() {
+  const { queue, currentIndex, volume, setCurrentTime, setDuration, setCurrentItem, setIsPlaying } = useStore()
+  const howlRef = useRef<Howl | null>(null)
+  const progressRef = useRef<ReturnType<typeof setInterval>>(undefined)
+  const currentIdxRef = useRef(currentIndex)
+
+  useEffect(() => {
+    currentIdxRef.current = currentIndex
+  }, [currentIndex])
+
+  const playItem = useCallback(
+    (index: number) => {
+      const item = queue[index]
+      if (!item) return
+
+      // Cleanup previous
+      if (howlRef.current) {
+        howlRef.current.unload()
+      }
+      if (progressRef.current) {
+        clearInterval(progressRef.current)
+      }
+
+      setCurrentItem(item)
+      currentIdxRef.current = index
+
+      const isTTS = item.item_type.startsWith('tts')
+      const src = isTTS ? item.tts_audio_url : `/api/audio/music/${item.song_id}`
+
+      if (!src) {
+        // Song has no playable URL - skip
+        radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: 'no_url' })
+        const next = index + 1
+        if (next < queue.length) {
+          playItem(next)
+        }
+        return
+      }
+
+      const howl = new Howl({
+        src: [src],
+        html5: true,
+        volume: useStore.getState().volume,
+        format: ['mp3'],
+        onplay: () => {
+          setIsPlaying(true)
+          const dur = howl.duration()
+          setDuration(dur)
+
+          progressRef.current = setInterval(() => {
+            const seek = howl.seek() as number
+            setCurrentTime(seek)
+            radioWS.send({ type: 'progress_report', queue_item_id: item.id, position_seconds: seek })
+          }, 1000)
+        },
+        onend: () => {
+          setIsPlaying(false)
+          setCurrentTime(0)
+          setDuration(0)
+          if (progressRef.current) clearInterval(progressRef.current)
+
+          // Advance to next item
+          const next = currentIdxRef.current + 1
+          if (next >= queue.length) {
+            // Queue exhausted - request refill via HTTP + WS
+            radioWS.send({ type: 'refill' })
+          } else {
+            playItem(next)
+          }
+        },
+        onloaderror: (_id, err) => {
+          console.error('Audio load error:', err)
+          radioWS.send({ type: 'error_report', queue_item_id: item.id })
+          const next = currentIdxRef.current + 1
+          if (next < queue.length) playItem(next)
+        },
+        onpause: () => setIsPlaying(false),
+      })
+
+      howl.play()
+      howlRef.current = howl
+    },
+    [queue.length],
+  )
+
+  // Auto-play when queue updates
+  useEffect(() => {
+    if (queue.length > 0 && !howlRef.current) {
+      playItem(currentIndex)
+    }
+  }, [queue])
+
+  // Listen for queue updates from WebSocket (new session created)
+  useEffect(() => {
+    const unsub = radioWS.on('queue_update', (msg) => {
+      const items = msg.items as Array<Record<string, unknown>>
+      const playingIndex = msg.playing_index as number
+
+      // Check if this is a new queue (different from current)
+      if (items && items.length > 0) {
+        // Start playing the new queue
+        if (howlRef.current) {
+          howlRef.current.unload()
+          howlRef.current = null
+        }
+        // queue will be updated via store, then the effect above fires
+      }
+    })
+    return unsub
+  }, [])
+
+  // Volume sync
+  useEffect(() => {
+    if (howlRef.current) {
+      howlRef.current.volume(volume)
+    }
+  }, [volume])
+
+  const skip = useCallback(() => {
+    if (howlRef.current) {
+      howlRef.current.stop()
+    }
+    radioWS.send({ type: 'command', action: 'skip' })
+  }, [])
+
+  const stop = useCallback(() => {
+    if (howlRef.current) {
+      howlRef.current.stop()
+      howlRef.current.unload()
+      howlRef.current = null
+    }
+    if (progressRef.current) {
+      clearInterval(progressRef.current)
+    }
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setCurrentItem(null)
+  }, [])
+
+  return { skip, stop }
+}
