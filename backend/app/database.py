@@ -18,10 +18,11 @@ async def init_db():
         # Migrations: add columns that don't exist yet (SQLite-safe, ignore duplicates)
         _migrations = [
             "ALTER TABLE dj_sessions ADD COLUMN weather_summary TEXT",
+            "ALTER TABLE users ADD COLUMN google_token_json TEXT",
         ]
         for sql in _migrations:
             try:
-                await conn.run_sync(lambda c, s=sql: c.execute(s))
+                await conn.exec_driver_sql(sql)
             except Exception:
                 pass  # Column already exists
 

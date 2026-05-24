@@ -47,6 +47,18 @@ export async function getVoices() {
   return data.voices as TTSVoice[]
 }
 
+export async function getGreeting() {
+  const { data } = await api.get('/radio/greeting')
+  return data as {
+    greeting_text: string
+    suggested_mood: string
+    time_label: string
+    time_mood: string
+    recent_artists: string[]
+    top_genre: string
+  }
+}
+
 // DLNA
 
 export async function getDlnaDevices(force = false) {

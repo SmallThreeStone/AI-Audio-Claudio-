@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store'
-import { requestRadio } from '../../api/radio'
+import { requestRadio, getGreeting } from '../../api/radio'
 import PersonaSelector from './PersonaSelector'
 
 const QUICK_PROMPTS = [
@@ -14,8 +14,19 @@ const QUICK_PROMPTS = [
 export default function ChatInput() {
   const [text, setText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [greeting, setGreeting] = useState<string | null>(null)
+  const [suggestedMood, setSuggestedMood] = useState<string | null>(null)
   const { setIsGenerating, isGenerating, selectedPersona } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    getGreeting()
+      .then((g) => {
+        setGreeting(g.greeting_text)
+        setSuggestedMood(g.suggested_mood)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleSubmit = async (inputText?: string) => {
     const trimmed = (inputText || text).trim()
@@ -75,6 +86,17 @@ export default function ChatInput() {
           )}
         </button>
       </div>
+
+      {/* Greeting banner */}
+      {showIdle && greeting && (
+        <button
+          onClick={() => handleSubmit(suggestedMood || greeting)}
+          className="w-full mt-3 text-xs text-[var(--color-radio-accent)] bg-[var(--color-radio-accent)]/5 border border-[var(--color-radio-accent)]/20 rounded-lg px-3 py-2 hover:bg-[var(--color-radio-accent)]/10 transition-colors text-left"
+        >
+          <span className="opacity-60">AI DJ: </span>
+          {greeting}
+        </button>
+      )}
 
       {/* Quick prompts */}
       {showIdle && (

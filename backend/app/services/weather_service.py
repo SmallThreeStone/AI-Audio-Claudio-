@@ -21,12 +21,13 @@ _VIBE_MAP = {
 
 async def locate_by_ip(client_ip: str) -> dict | None:
     """IP geolocation via ip-api.com (free, no API key). Returns {city, lat, lon, country} or None."""
-    if client_ip in ("127.0.0.1", "::1", "localhost") or client_ip.startswith("192.168.") or client_ip.startswith("10.") or client_ip.startswith("172."):
-        return None
-
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"http://ip-api.com/json/{client_ip}")
+            if client_ip in ("127.0.0.1", "::1", "localhost") or client_ip.startswith("192.168.") or client_ip.startswith("10.") or client_ip.startswith("172."):
+                # Local/private IP: query server's own public IP location as fallback
+                resp = await client.get("http://ip-api.com/json/")
+            else:
+                resp = await client.get(f"http://ip-api.com/json/{client_ip}")
             if resp.status_code != 200:
                 return None
             data = resp.json()

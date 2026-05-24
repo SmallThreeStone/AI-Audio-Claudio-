@@ -1,5 +1,6 @@
 import json
 import random
+from datetime import datetime
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -15,15 +16,17 @@ DJ_PERSONAS = {
         "voice": "zh-CN-XiaoxiaoNeural",
         "style": "温暖治愈系，像朋友深夜聊天",
         "emotion_tags": "[gentle]",
-        "system_prompt": """你是一个深夜电台 DJ，叫"小雨"，在 FM 107.5 "Claude FM" 用声音陪伴听众。
+        "system_prompt": """你是一个电台 DJ，叫"小雨"，在 FM 107.5 "Claude FM" 用声音陪伴听众。
+
+当前时间信息会附在听众消息中，请根据实际时间调整问候语（早上说早上好，深夜说深夜好等），开场白和晚安语也要与时段匹配。
 
 你的听众用文字告诉你 ta 现在的心情或状态，你要：
 1. 从音乐库中选 6-8 首最契合的歌
 2. 为每首歌写推荐语
-3. 写开场白和晚安语
+3. 写开场白和收尾语
 
 说话风格（很重要！）：
-- 像跟朋友深夜聊天，不是念稿子。用"你"不用"您"
+- 像跟朋友聊天，不是念稿子。用"你"不用"您"
 - 短句为主，像真人说话那样断句。语气词自然带出来：嗯、哈、呢、吧、啊
 - 不说空话套话，不堆形容词。真诚比华丽重要
 - 可以分享你的小感受、小联想
@@ -31,7 +34,7 @@ DJ_PERSONAS = {
 - 每段话 1-3 句，说快了 8-15 秒
 
 返回 JSON（不要 markdown 代码块）：
-{"session_theme":"本期主题","greeting_tts":"开场白","script":[{"type":"song","song_id":12345,"intro_text":"推荐语"},{"type":"tts","text":"过渡语"}],"closing_tts":"晚安语"}""",
+{"session_theme":"本期主题","greeting_tts":"开场白","script":[{"type":"song","song_id":12345,"intro_text":"推荐语"},{"type":"tts","text":"过渡语"}],"closing_tts":"收尾语"}""",
     },
     "laowang": {
         "name": "老王",
@@ -96,7 +99,7 @@ DJ_PERSONAS = {
 }
 
 
-async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
+async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None) -> dict:
     """Generate a radio script using DeepSeek. Returns parsed JSON."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
 
@@ -110,7 +113,14 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     if weather_info:
         weather_block = f"\n【当前天气】\n{weather_info}\n"
 
-    user_prompt = f"""听众说："{user_request}"{weather_block}
+    calendar_block = ""
+    if calendar_info:
+        calendar_block = f"\n【日程提醒】\n{calendar_info}\n"
+
+    user_prompt = f"""听众说："{user_request}"{weather_block}{calendar_block}
+
+【当前时间】
+{_current_time_context()}
 
 【音乐库概况】
 {library_summary}
@@ -121,7 +131,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 【候选曲目（{len(songs)} 首）】
 {song_text}
 
-请根据听众的心情、天气和听歌画像选歌并生成电台脚本。"""
+请根据听众的心情、天气、日程、当前时间和听歌画像选歌并生成电台脚本。"""
 
     text = await _call_deepseek(client, p["system_prompt"], user_prompt)
     return _parse_json_response(text)
@@ -192,6 +202,9 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     user_prompt = f"""听众原始请求："{original_request}"
 听众还在继续听，刚才播放了以下歌曲（不要重复选）：
 {chr(10).join(recently)}
+
+【当前时间】
+{_current_time_context()}
 
 【候选曲目（{len(songs)} 首）】
 {song_text}
@@ -266,7 +279,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
             func.count().label("plays"),
             func.avg(ListeningHistory.completion_rate).label("avg_completion"),
         )
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event.in_(["started", "completed", "skipped"]))
         .group_by(ListeningHistory.song_id)
         .order_by(func.count().desc())
@@ -281,7 +294,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
             func.count().label("total"),
             func.sum(case((ListeningHistory.event == "completed", 1), else_=0)).label("completed"),
         )
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event.in_(["started", "completed"]))
         .group_by(Song.artist)
         .having(func.count() >= 3)
@@ -297,7 +310,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
             func.count().label("total"),
             func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)).label("skipped"),
         )
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event.in_(["started", "skipped"]))
         .group_by(Song.artist)
         .having(func.count() >= 3)
@@ -309,7 +322,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
     # Recently played songs (last 10, by started event)
     recent_result = await db.execute(
         select(Song.name, Song.artist)
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event == "started")
         .order_by(ListeningHistory.listened_at.desc())
         .limit(10)
@@ -399,3 +412,26 @@ def _format_song_list(songs: list[Song]) -> str:
             f"心情:{tags} | 时长:{dur}"
         )
     return "\n".join(lines)
+
+
+def _current_time_context() -> str:
+    """Build current time context for the AI prompt."""
+    now = datetime.now()
+    weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    weekday = weekday_names[now.weekday()]
+    hour = now.hour
+    if 5 <= hour < 8:
+        period = "清晨"
+    elif 8 <= hour < 12:
+        period = "上午"
+    elif 12 <= hour < 14:
+        period = "中午"
+    elif 14 <= hour < 18:
+        period = "下午"
+    elif 18 <= hour < 21:
+        period = "傍晚"
+    elif 21 <= hour < 23:
+        period = "晚上"
+    else:
+        period = "深夜"
+    return f"现在是{weekday}{period} {now.hour}:{now.minute:02d}，请根据这个时段调整问候语、选歌风格和整体氛围。"

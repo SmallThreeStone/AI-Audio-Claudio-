@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from .database import init_db, async_session
 from .models.user import User
-from .routers import auth, playlists, songs, radio, audio, ws, dlna
+from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar
 from .services.sidecar_manager import sidecar
 from .utils.cookie_store import load_cookies
 
@@ -82,6 +82,7 @@ app.include_router(radio.router)
 app.include_router(audio.router)
 app.include_router(ws.router)
 app.include_router(dlna.router)
+app.include_router(calendar.router)
 
 
 @app.get("/api/health")
