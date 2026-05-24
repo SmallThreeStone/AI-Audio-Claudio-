@@ -28,9 +28,12 @@ async def sync_all_playlists(db: AsyncSession, user: User):
         pl_id = pl_data["id"]
         is_liked = pl_id in liked_ids
 
-        # Upsert playlist
+        # Upsert playlist (filtered by both netease ID and user_id)
         result = await db.execute(
-            select(Playlist).where(Playlist.netease_playlist_id == pl_id)
+            select(Playlist).where(
+                Playlist.netease_playlist_id == pl_id,
+                Playlist.user_id == user.id,
+            )
         )
         playlist = result.scalar()
         if not playlist:

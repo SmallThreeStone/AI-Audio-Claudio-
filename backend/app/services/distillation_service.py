@@ -165,8 +165,11 @@ class DistillationResult:
 # ---------------------------------------------------------------------------
 
 
-async def distill(db: AsyncSession) -> DistillationResult:
-    total = await db.scalar(select(func.count()).select_from(ListeningHistory))
+async def distill(db: AsyncSession, user_id: int | None = None) -> DistillationResult:
+    count_query = select(func.count()).select_from(ListeningHistory)
+    if user_id is not None:
+        count_query = count_query.where(ListeningHistory.user_id == user_id)
+    total = await db.scalar(count_query)
     total_listens = total or 0
 
     if total_listens < 10:
@@ -174,10 +177,10 @@ async def distill(db: AsyncSession) -> DistillationResult:
             meta={"total_listens": total_listens, "insufficient_data": True},
         )
 
-    ne_aff = await _compute_netease_affinity(db)
-    time_aff = await _compute_time_affinity(db)
-    weather_aff = await _compute_weather_affinity(db)
-    scene_aff = await _compute_scene_affinity(db)
+    ne_aff = await _compute_netease_affinity(db, user_id)
+    time_aff = await _compute_time_affinity(db, user_id)
+    weather_aff = await _compute_weather_affinity(db, user_id)
+    scene_aff = await _compute_scene_affinity(db, user_id)
     cross = _compute_cross_insights(time_aff, weather_aff, scene_aff)
     paragraph = _build_persona_paragraph(ne_aff, time_aff, weather_aff, scene_aff, cross, total_listens)
 
@@ -197,17 +200,20 @@ async def distill(db: AsyncSession) -> DistillationResult:
 # ---------------------------------------------------------------------------
 
 
-async def _compute_netease_affinity(db: AsyncSession) -> NeteaseAffinity:
+async def _compute_netease_affinity(db: AsyncSession, user_id: int | None = None) -> NeteaseAffinity:
     """Aggregate all-time NetEase listening stats by artist and song."""
-    rows = await db.execute(
+    query = (
         select(
             Song.name,
             Song.artist,
             NeteaseListening.play_count,
         )
         .join(Song, NeteaseListening.song_id == Song.id)
-        .order_by(NeteaseListening.play_count.desc())
     )
+    if user_id is not None:
+        query = query.where(NeteaseListening.user_id == user_id)
+    query = query.order_by(NeteaseListening.play_count.desc())
+    rows = await db.execute(query)
     all_rows = rows.all()
 
     # Top songs (by play count)
@@ -233,8 +239,8 @@ async def _compute_netease_affinity(db: AsyncSession) -> NeteaseAffinity:
 # ---------------------------------------------------------------------------
 
 
-async def _compute_time_affinity(db: AsyncSession) -> list[TimeAffinityEntry]:
-    rows = await db.execute(
+async def _compute_time_affinity(db: AsyncSession, user_id: int | None = None) -> list[TimeAffinityEntry]:
+    query = (
         select(
             ListeningHistory.song_id,
             ListeningHistory.listened_at,
@@ -244,6 +250,9 @@ async def _compute_time_affinity(db: AsyncSession) -> list[TimeAffinityEntry]:
         .join(Song, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event == "started", ListeningHistory.song_id.isnot(None))
     )
+    if user_id is not None:
+        query = query.where(ListeningHistory.user_id == user_id)
+    rows = await db.execute(query)
     events = rows.all()
 
     # Aggregate: {(song_name, artist, song_id): {slot: count}}
@@ -282,8 +291,8 @@ async def _compute_time_affinity(db: AsyncSession) -> list[TimeAffinityEntry]:
 # ---------------------------------------------------------------------------
 
 
-async def _compute_weather_affinity(db: AsyncSession) -> list[WeatherAffinityEntry]:
-    rows = await db.execute(
+async def _compute_weather_affinity(db: AsyncSession, user_id: int | None = None) -> list[WeatherAffinityEntry]:
+    query = (
         select(
             ListeningHistory.song_id,
             Song.name,
@@ -301,6 +310,9 @@ async def _compute_weather_affinity(db: AsyncSession) -> list[WeatherAffinityEnt
             ListeningHistory.song_id.isnot(None),
         )
     )
+    if user_id is not None:
+        query = query.where(ListeningHistory.user_id == user_id)
+    rows = await db.execute(query)
     events = rows.all()
 
     # Per-weather-category aggregation
@@ -366,8 +378,8 @@ async def _compute_weather_affinity(db: AsyncSession) -> list[WeatherAffinityEnt
 # ---------------------------------------------------------------------------
 
 
-async def _compute_scene_affinity(db: AsyncSession) -> list[SceneAffinityEntry]:
-    rows = await db.execute(
+async def _compute_scene_affinity(db: AsyncSession, user_id: int | None = None) -> list[SceneAffinityEntry]:
+    query = (
         select(
             ListeningHistory.song_id,
             Song.name,
@@ -386,6 +398,9 @@ async def _compute_scene_affinity(db: AsyncSession) -> list[SceneAffinityEntry]:
             ListeningHistory.song_id.isnot(None),
         )
     )
+    if user_id is not None:
+        query = query.where(ListeningHistory.user_id == user_id)
+    rows = await db.execute(query)
     events = rows.all()
 
     # Per-scene-keyword aggregation

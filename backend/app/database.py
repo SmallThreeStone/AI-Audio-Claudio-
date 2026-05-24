@@ -21,12 +21,30 @@ async def init_db():
             migrations = [
                 ("dj_sessions", "weather_summary", "ALTER TABLE dj_sessions ADD COLUMN weather_summary TEXT"),
                 ("users", "google_token_json", "ALTER TABLE users ADD COLUMN google_token_json TEXT"),
+                ("netease_listening", "user_id", "ALTER TABLE netease_listening ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"),
             ]
             for table, column, sql in migrations:
                 info = sync_conn.exec_driver_sql(f"PRAGMA table_info({table})")
                 columns = [row[1] for row in info]
                 if column not in columns:
                     sync_conn.exec_driver_sql(sql)
+
+            # Backfill netease_listening.user_id for existing rows (single-user era data)
+            nl_info = sync_conn.exec_driver_sql("PRAGMA table_info(netease_listening)")
+            nl_columns = [row[1] for row in nl_info]
+            if "user_id" in nl_columns:
+                null_count = sync_conn.exec_driver_sql(
+                    "SELECT COUNT(*) FROM netease_listening WHERE user_id IS NULL"
+                ).fetchone()[0]
+                if null_count > 0:
+                    # Assign to the first logged-in user
+                    first_user = sync_conn.exec_driver_sql(
+                        "SELECT id FROM users WHERE login_status = 'logged_in' LIMIT 1"
+                    ).fetchone()
+                    if first_user:
+                        sync_conn.exec_driver_sql(
+                            f"UPDATE netease_listening SET user_id = {first_user[0]} WHERE user_id IS NULL"
+                        )
 
             # FK migration: listening_history.queue_item_id -> queue_items.id
             fk_info = sync_conn.exec_driver_sql("PRAGMA foreign_key_list(listening_history)")

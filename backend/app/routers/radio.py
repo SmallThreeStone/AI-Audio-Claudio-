@@ -21,6 +21,13 @@ from ..routers.ws import ws_manager
 router = APIRouter(prefix="/api/radio", tags=["radio"])
 
 
+async def _get_current_user_id(session: AsyncSession) -> int | None:
+    """Return the logged-in user's ID, or None. Used for data isolation."""
+    result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user = result.scalar()
+    return user.id if user else None
+
+
 class RadioRequest(BaseModel):
     text: str
     persona: str = "xiaoyu"
@@ -100,7 +107,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
 
     try:
         await _progress("analyzing", "解读心情，构思歌单...")
-        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary)
+        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
         await session.commit()
@@ -121,9 +128,11 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
 
 @router.get("/sessions")
 async def list_sessions(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(
-        select(DJSession).order_by(DJSession.created_at.desc()).limit(20)
-    )
+    user_id = await _get_current_user_id(session)
+    query = select(DJSession).order_by(DJSession.created_at.desc()).limit(20)
+    if user_id is not None:
+        query = query.where(DJSession.user_id == user_id)
+    result = await session.execute(query)
     sessions = result.scalars().all()
     return [
         {
@@ -143,13 +152,16 @@ async def list_sessions(session: AsyncSession = Depends(get_session)):
 
 @router.get("/queue")
 async def get_queue(session: AsyncSession = Depends(get_session)):
-    # Get latest active session
-    result = await session.execute(
+    user_id = await _get_current_user_id(session)
+    query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
         .order_by(DJSession.created_at.desc())
         .limit(1)
     )
+    if user_id is not None:
+        query = query.where(DJSession.user_id == user_id)
+    result = await session.execute(query)
     active = result.scalar()
     if not active:
         return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
@@ -159,12 +171,16 @@ async def get_queue(session: AsyncSession = Depends(get_session)):
 
 @router.post("/skip")
 async def skip_track(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(
+    user_id = await _get_current_user_id(session)
+    query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing"]))
         .order_by(DJSession.created_at.desc())
         .limit(1)
     )
+    if user_id is not None:
+        query = query.where(DJSession.user_id == user_id)
+    result = await session.execute(query)
     active = result.scalar()
     if active:
         active.played_items += 1
@@ -185,13 +201,17 @@ async def skip_to_track(queue_item_id: int, session: AsyncSession = Depends(get_
     if not qi:
         return {"status": "not_found"}
 
-    # Find the active session
-    active_result = await session.execute(
+    # Find the active session (must belong to current user)
+    user_id = await _get_current_user_id(session)
+    active_query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing"]))
         .order_by(DJSession.created_at.desc())
         .limit(1)
     )
+    if user_id is not None:
+        active_query = active_query.where(DJSession.user_id == user_id)
+    active_result = await session.execute(active_query)
     active = active_result.scalar()
     if active:
         active.played_items = qi.position
@@ -203,12 +223,16 @@ async def skip_to_track(queue_item_id: int, session: AsyncSession = Depends(get_
 
 @router.post("/stop")
 async def stop_radio(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(
+    user_id = await _get_current_user_id(session)
+    query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
         .order_by(DJSession.created_at.desc())
         .limit(1)
     )
+    if user_id is not None:
+        query = query.where(DJSession.user_id == user_id)
+    result = await session.execute(query)
     active = result.scalar()
     if active:
         active.status = "completed"
@@ -276,18 +300,24 @@ async def list_personas():
 @router.get("/greeting")
 async def get_greeting(session: AsyncSession = Depends(get_session)):
     """Get a context-aware greeting based on time, weather, and listening history."""
+    user_id = await _get_current_user_id(session)
     weather_summary = None
     try:
         weather_summary = await get_weather_summary("127.0.0.1")  # Will use default/fallback
     except Exception:
         pass
-    return await build_greeting(session, weather_summary)
+    return await build_greeting(session, weather_summary, user_id)
 
 
 @router.post("/feedback")
 async def record_feedback(body: FeedbackRequest, session: AsyncSession = Depends(get_session)):
     """Record user feedback (like/dislike) for a queue item and its song."""
-    result = await session.execute(select(QueueItem).where(QueueItem.id == body.queue_item_id))
+    # Verify QueueItem belongs to current user's session
+    user_id = await _get_current_user_id(session)
+    qi_query = select(QueueItem).where(QueueItem.id == body.queue_item_id)
+    if user_id is not None:
+        qi_query = qi_query.join(DJSession, QueueItem.session_id == DJSession.id).where(DJSession.user_id == user_id)
+    result = await session.execute(qi_query)
     qi = result.scalar()
     if not qi:
         raise HTTPException(status_code=404, detail="Queue item not found")
@@ -311,8 +341,13 @@ async def record_feedback(body: FeedbackRequest, session: AsyncSession = Depends
 @router.post("/listen-event")
 async def record_listen_event(body: ListenEventRequest, session: AsyncSession = Depends(get_session)):
     """Record a listening event (started/completed/skipped) for behavioral analysis."""
-    # Get queue item and song info
-    qi_result = await session.execute(select(QueueItem).where(QueueItem.id == body.queue_item_id))
+    user_id = await _get_current_user_id(session)
+
+    # Get queue item, verifying it belongs to current user's session
+    qi_query = select(QueueItem).where(QueueItem.id == body.queue_item_id)
+    if user_id is not None:
+        qi_query = qi_query.join(DJSession, QueueItem.session_id == DJSession.id).where(DJSession.user_id == user_id)
+    qi_result = await session.execute(qi_query)
     qi = qi_result.scalar()
     if not qi or not qi.song_id:
         return {"status": "ok"}  # TTS items not tracked
@@ -359,6 +394,11 @@ async def record_listen_event(body: ListenEventRequest, session: AsyncSession = 
 @router.get("/profile")
 async def music_profile(session: AsyncSession = Depends(get_session)):
     """Get user's music taste profile with behavioral insights."""
+    # Current user for data isolation
+    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user = user_result.scalar()
+    user_id = user.id if user else None
+
     # Genre distribution
     genre_result = await session.execute(
         select(Song.genre, func.count())
@@ -424,11 +464,16 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     liked_result = await session.execute(select(func.sum(Song.like_count)).select_from(Song))
     total_likes = liked_result.scalar() or 0
 
-    # ===== Behavioral insights =====
+    # ===== Behavioral insights (per-user) =====
+
+    def _user_filter(query):
+        if user_id is not None:
+            return query.where(ListeningHistory.user_id == user_id)
+        return query
 
     # Total listen events
     total_listens_result = await session.execute(
-        select(func.count()).select_from(ListeningHistory)
+        _user_filter(select(func.count()).select_from(ListeningHistory))
     )
     total_listens = total_listens_result.scalar() or 0
 
@@ -436,11 +481,13 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     recent = []
     if total_listens > 0:
         recent_result = await session.execute(
-            select(ListeningHistory, Song.name, Song.artist, Song.cover_url)
-            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-            .where(ListeningHistory.event == "started")
-            .order_by(ListeningHistory.listened_at.desc())
-            .limit(20)
+            _user_filter(
+                select(ListeningHistory, Song.name, Song.artist, Song.cover_url)
+                .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+                .where(ListeningHistory.event == "started")
+                .order_by(ListeningHistory.listened_at.desc())
+                .limit(20)
+            )
         )
         seen = set()
         for lh, name, artist, cover in recent_result.all():
@@ -460,19 +507,21 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     completed_artists = []
     if total_listens > 0:
         comp_result = await session.execute(
-            select(
-                Song.artist,
-                func.count().label("total"),
-                func.sum(
-                    case((ListeningHistory.event == "completed", 1), else_=0)
-                ).label("completed"),
+            _user_filter(
+                select(
+                    Song.artist,
+                    func.count().label("total"),
+                    func.sum(
+                        case((ListeningHistory.event == "completed", 1), else_=0)
+                    ).label("completed"),
+                )
+                .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+                .where(ListeningHistory.event.in_(["started", "completed"]))
+                .group_by(Song.artist)
+                .having(func.count() >= 3)
+                .order_by((func.sum(case((ListeningHistory.event == "completed", 1), else_=0)) * 1.0 / func.count()).desc())
+                .limit(8)
             )
-            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-            .where(ListeningHistory.event.in_(["started", "completed"]))
-            .group_by(Song.artist)
-            .having(func.count() >= 3)
-            .order_by((func.sum(case((ListeningHistory.event == "completed", 1), else_=0)) * 1.0 / func.count()).desc())
-            .limit(8)
         )
         for artist, total, comp in comp_result.all():
             rate = round(comp / total * 100) if total > 0 else 0
@@ -482,19 +531,21 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     skipped_artists = []
     if total_listens > 0:
         skip_result = await session.execute(
-            select(
-                Song.artist,
-                func.count().label("total"),
-                func.sum(
-                    case((ListeningHistory.event == "skipped", 1), else_=0)
-                ).label("skipped"),
+            _user_filter(
+                select(
+                    Song.artist,
+                    func.count().label("total"),
+                    func.sum(
+                        case((ListeningHistory.event == "skipped", 1), else_=0)
+                    ).label("skipped"),
+                )
+                .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+                .where(ListeningHistory.event.in_(["started", "skipped"]))
+                .group_by(Song.artist)
+                .having(func.count() >= 3)
+                .order_by((func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)) * 1.0 / func.count()).desc())
+                .limit(8)
             )
-            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-            .where(ListeningHistory.event.in_(["started", "skipped"]))
-            .group_by(Song.artist)
-            .having(func.count() >= 3)
-            .order_by((func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)) * 1.0 / func.count()).desc())
-            .limit(8)
         )
         for artist, total, skp in skip_result.all():
             rate = round(skp / total * 100) if total > 0 else 0
@@ -505,12 +556,14 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     if total_listens > 0:
         # Use SQLite strftime to get hour
         hour_result = await session.execute(
-            select(
-                func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
-                func.count(),
+            _user_filter(
+                select(
+                    func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
+                    func.count(),
+                )
+                .where(ListeningHistory.event == "started")
+                .group_by(func.strftime("%H", ListeningHistory.listened_at))
             )
-            .where(ListeningHistory.event == "started")
-            .group_by(func.strftime("%H", ListeningHistory.listened_at))
         )
         for hour, cnt in hour_result.all():
             if hour is None:
@@ -544,7 +597,13 @@ async def get_distillation(session: AsyncSession = Depends(get_session)):
     """Get AI-distilled music taste insights with cross-dimension correlations."""
     from ..services.distillation_service import distill
     import dataclasses
-    result = await distill(session)
+
+    # Get current user for data isolation
+    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user = user_result.scalar()
+    user_id = user.id if user else None
+
+    result = await distill(session, user_id)
     return {
         "meta": result.meta,
         "persona_paragraph": result.persona_paragraph,

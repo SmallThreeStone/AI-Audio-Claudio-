@@ -26,10 +26,10 @@ def _time_greeting() -> tuple[str, str]:
         return "深夜好", "舒缓、陪伴感"
 
 
-async def _recent_artists(db: AsyncSession, days: int = 3) -> list[str]:
+async def _recent_artists(db: AsyncSession, user_id: int | None = None, days: int = 3) -> list[str]:
     """Get artists the user listened to in recent days."""
     since = datetime.datetime.now() - datetime.timedelta(days=days)
-    result = await db.execute(
+    query = (
         select(Song.artist, func.count().label("c"))
         .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(
@@ -37,16 +37,20 @@ async def _recent_artists(db: AsyncSession, days: int = 3) -> list[str]:
             ListeningHistory.listened_at >= since,
             Song.artist != None,
         )
-        .group_by(Song.artist)
+    )
+    if user_id is not None:
+        query = query.where(ListeningHistory.user_id == user_id)
+    result = await db.execute(
+        query.group_by(Song.artist)
         .order_by(func.count().desc())
         .limit(5)
     )
     return [row[0] for row in result.all() if row[0]]
 
 
-async def _top_mood_in_time_slot(db: AsyncSession) -> str:
+async def _top_mood_in_time_slot(db: AsyncSession, user_id: int | None = None) -> str:
     """Find the most-played mood/genre during the current time slot."""
-    result = await db.execute(
+    query = (
         select(Song.genre, func.count().label("c"))
         .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(
@@ -54,7 +58,11 @@ async def _top_mood_in_time_slot(db: AsyncSession) -> str:
             ListeningHistory.listened_at >= datetime.datetime.now() - datetime.timedelta(days=30),
             Song.genre != None,
         )
-        .group_by(Song.genre)
+    )
+    if user_id is not None:
+        query = query.where(ListeningHistory.user_id == user_id)
+    result = await db.execute(
+        query.group_by(Song.genre)
         .order_by(func.count().desc())
         .limit(5)
     )
@@ -62,11 +70,11 @@ async def _top_mood_in_time_slot(db: AsyncSession) -> str:
     return genres[0] if genres else ""
 
 
-async def build_greeting(db: AsyncSession, weather_summary: str | None = None) -> dict:
+async def build_greeting(db: AsyncSession, weather_summary: str | None = None, user_id: int | None = None) -> dict:
     """Build a context-aware greeting. Returns {greeting_text, suggested_mood}."""
     time_label, time_mood = _time_greeting()
-    artists = await _recent_artists(db)
-    top_genre = await _top_mood_in_time_slot(db)
+    artists = await _recent_artists(db, user_id)
+    top_genre = await _top_mood_in_time_slot(db, user_id)
 
     greeting_parts = [time_label]
 

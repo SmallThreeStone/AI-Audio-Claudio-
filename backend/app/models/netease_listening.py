@@ -15,6 +15,7 @@ class NeteaseListening(Base):
     __tablename__ = "netease_listening"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     song_id: Mapped[int | None] = mapped_column(ForeignKey("songs.id", ondelete="CASCADE"))
     netease_song_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     play_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -99,7 +99,7 @@ DJ_PERSONAS = {
 }
 
 
-async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None) -> dict:
+async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None, user_id: int | None = None) -> dict:
     """Generate a radio script using DeepSeek. Returns parsed JSON."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
 
@@ -107,7 +107,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     songs = await _get_song_candidates(db)
     library_summary = await _build_library_summary(db)
     song_text = _format_song_list(songs)
-    behavioral_profile = await _build_behavioral_profile(db)
+    behavioral_profile = await _build_behavioral_profile(db, user_id)
 
     weather_block = ""
     if weather_info:
@@ -262,7 +262,7 @@ async def _build_library_summary(db: AsyncSession) -> str:
     return summary
 
 
-async def _build_behavioral_profile(db: AsyncSession) -> str:
+async def _build_behavioral_profile(db: AsyncSession, user_id: int | None = None) -> str:
     """Build a behavioral profile summary — uses distillation if data is sufficient,
     falls back to raw stats otherwise."""
     from ..models.listening_history import ListeningHistory
@@ -271,7 +271,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
     # Try distillation first
     try:
         from .distillation_service import distill
-        result = await distill(db)
+        result = await distill(db, user_id)
         if not result.meta.get("insufficient_data", True):
             return result.persona_paragraph
     except Exception as e:
@@ -279,8 +279,13 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
 
     # ── Fallback: raw stats for new users ──
 
+    def _maybe_user(query):
+        if user_id is not None:
+            return query.where(ListeningHistory.user_id == user_id)
+        return query
+
     total_result = await db.execute(
-        select(func.count()).select_from(ListeningHistory)
+        _maybe_user(select(func.count()).select_from(ListeningHistory))
     )
     total_listens = total_result.scalar() or 0
 
@@ -289,69 +294,79 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
 
     # Most played songs (completed)
     top_songs_result = await db.execute(
-        select(
-            Song.name, Song.artist,
-            func.count().label("plays"),
-            func.avg(ListeningHistory.completion_rate).label("avg_completion"),
+        _maybe_user(
+            select(
+                Song.name, Song.artist,
+                func.count().label("plays"),
+                func.avg(ListeningHistory.completion_rate).label("avg_completion"),
+            )
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event.in_(["started", "completed", "skipped"]))
+            .group_by(ListeningHistory.song_id)
+            .order_by(func.count().desc())
+            .limit(10)
         )
-        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-        .where(ListeningHistory.event.in_(["started", "completed", "skipped"]))
-        .group_by(ListeningHistory.song_id)
-        .order_by(func.count().desc())
-        .limit(10)
     )
     top_songs = top_songs_result.all()
 
     # Favorite artists (high completion rate, min 3 plays)
     fav_artists_result = await db.execute(
-        select(
-            Song.artist,
-            func.count().label("total"),
-            func.sum(case((ListeningHistory.event == "completed", 1), else_=0)).label("completed"),
+        _maybe_user(
+            select(
+                Song.artist,
+                func.count().label("total"),
+                func.sum(case((ListeningHistory.event == "completed", 1), else_=0)).label("completed"),
+            )
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event.in_(["started", "completed"]))
+            .group_by(Song.artist)
+            .having(func.count() >= 3)
+            .order_by((func.sum(case((ListeningHistory.event == "completed", 1), else_=0)) * 1.0 / func.count()).desc())
+            .limit(5)
         )
-        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-        .where(ListeningHistory.event.in_(["started", "completed"]))
-        .group_by(Song.artist)
-        .having(func.count() >= 3)
-        .order_by((func.sum(case((ListeningHistory.event == "completed", 1), else_=0)) * 1.0 / func.count()).desc())
-        .limit(5)
     )
     fav_artists = fav_artists_result.all()
 
     # Skipped artists (high skip rate, min 3 plays)
     skip_artists_result = await db.execute(
-        select(
-            Song.artist,
-            func.count().label("total"),
-            func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)).label("skipped"),
+        _maybe_user(
+            select(
+                Song.artist,
+                func.count().label("total"),
+                func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)).label("skipped"),
+            )
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event.in_(["started", "skipped"]))
+            .group_by(Song.artist)
+            .having(func.count() >= 3)
+            .order_by((func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)) * 1.0 / func.count()).desc())
+            .limit(5)
         )
-        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-        .where(ListeningHistory.event.in_(["started", "skipped"]))
-        .group_by(Song.artist)
-        .having(func.count() >= 3)
-        .order_by((func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)) * 1.0 / func.count()).desc())
-        .limit(5)
     )
     skip_artists = skip_artists_result.all()
 
     # Recently played songs (last 10, by started event)
     recent_result = await db.execute(
-        select(Song.name, Song.artist)
-        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
-        .where(ListeningHistory.event == "started")
-        .order_by(ListeningHistory.listened_at.desc())
-        .limit(10)
+        _maybe_user(
+            select(Song.name, Song.artist)
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event == "started")
+            .order_by(ListeningHistory.listened_at.desc())
+            .limit(10)
+        )
     )
     recent_songs = recent_result.all()
 
     # Time of day pattern
     hour_result = await db.execute(
-        select(
-            func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
-            func.count(),
+        _maybe_user(
+            select(
+                func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
+                func.count(),
+            )
+            .where(ListeningHistory.event == "started")
+            .group_by(func.strftime("%H", ListeningHistory.listened_at))
         )
-        .where(ListeningHistory.event == "started")
-        .group_by(func.strftime("%H", ListeningHistory.listened_at))
     )
     morning = afternoon = evening = night = 0
     for hour, cnt in hour_result.all():

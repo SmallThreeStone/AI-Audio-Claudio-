@@ -73,8 +73,10 @@ async def import_netease_history(db: AsyncSession) -> dict:
         if s.netease_song_id:
             song_index[s.netease_song_id] = s
 
-    # Build index of existing netease_listening entries
-    existing_stats = await db.execute(select(NeteaseListening))
+    # Build index of existing netease_listening entries for this user
+    existing_stats = await db.execute(
+        select(NeteaseListening).where(NeteaseListening.user_id == user.id)
+    )
     stats_index: dict[int, NeteaseListening] = {}
     for ns in existing_stats.scalars():
         if ns.song_id:
@@ -119,9 +121,11 @@ async def import_netease_history(db: AsyncSession) -> dict:
         if existing:
             existing.play_count = play_count
             existing.score = score
+            existing.user_id = user.id
             imported += 1
         else:
             db.add(NeteaseListening(
+                user_id=user.id,
                 song_id=local_song.id,
                 netease_song_id=netease_id,
                 play_count=play_count,

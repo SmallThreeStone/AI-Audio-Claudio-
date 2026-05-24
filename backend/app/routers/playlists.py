@@ -12,7 +12,12 @@ router = APIRouter(prefix="/api/playlists", tags=["playlists"])
 
 @router.get("")
 async def list_playlists(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Playlist).order_by(Playlist.is_liked.desc(), Playlist.song_count.desc()))
+    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user = user_result.scalar()
+    query = select(Playlist).order_by(Playlist.is_liked.desc(), Playlist.song_count.desc())
+    if user:
+        query = query.where(Playlist.user_id == user.id)
+    result = await session.execute(query)
     playlists = result.scalars().all()
     return [
         {
