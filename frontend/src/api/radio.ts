@@ -38,6 +38,10 @@ export async function skipTrack() {
   await api.post('/radio/skip')
 }
 
+export async function skipToTrack(queueItemId: number) {
+  await api.post(`/radio/skip-to/${queueItemId}`)
+}
+
 export async function stopRadio() {
   await api.post('/radio/stop')
 }
