@@ -5,7 +5,8 @@ Windows Web 版 AI 私人电台 DJ。受 `@slicenfer/claudio` 启发，用自然
 ## 技术栈
 
 - **前端**: React 19 + TypeScript + Vite + Tailwind CSS 4 + Howler.js + Zustand
-- **后端**: Python FastAPI + SQLAlchemy (async/SQLite) + edge-tts + Anthropic SDK
+- **后端**: Python FastAPI + SQLAlchemy (async/SQLite) + edge-tts + OpenAI SDK
+- **AI**: DeepSeek API (deepseek-chat, OpenAI 兼容接口)
 - **侧车**: Node.js `@neteasecloudmusicapienhanced/api`（网易云 API）
 
 ## 快速启动
@@ -15,11 +16,11 @@ Windows Web 版 AI 私人电台 DJ。受 `@slicenfer/claudio` 启发，用自然
 cd backend && pip install -r requirements.txt
 cd ../frontend && npm install
 
-# 2. 设置 Claude API Key
-set ANTHROPIC_API_KEY=sk-ant-...
+# 2. 配置 API Key（在 backend/.env 中）
+# DEEPSEEK_API_KEY=sk-...
 
 # 3. 启动侧车（网易云 API）
-npx @neteasecloudmusicapienhanced/api
+node node_modules/@neteasecloudmusicapienhanced/api/main.js
 # 默认监听 http://localhost:3000
 
 # 4. 启动后端
@@ -28,9 +29,6 @@ cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --relo
 # 5. 启动前端
 cd frontend && npm run dev
 # 访问 http://localhost:5173
-
-# 或使用 start.bat 一键启动
-cd scripts && start.bat
 ```
 
 ## 项目结构
@@ -46,9 +44,17 @@ cd scripts && start.bat
   - `src/store/` — Zustand 全局状态
   - `src/api/` — API 客户端层
 
+## 当前版本
+
+V2.1 — 4 种 DJ 人设、音乐画像、字幕面板、反馈系统、睡眠定时、稳定性修复
+
+## 演进路线图
+
+参见记忆系统：`project_upgrade_roadmap.md` — 向 Claudio 级个性化演进的三阶段规划
+
 ## 环境要求
 
-- Python 3.11+
-- Node.js 18+
+- Python 3.11+（路径：`C:/Users/31397/AppData/Local/Programs/Python/Python311/python.exe`）
+- Node.js 18+（路径：`E:/nodejs/node.exe`）
 - 网易云音乐账号（扫码登录）
-- Anthropic API Key（Claude API）
+- DeepSeek API Key（配置在 `backend/.env`）

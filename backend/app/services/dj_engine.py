@@ -100,16 +100,20 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     songs = await _get_song_candidates(db)
     library_summary = await _build_library_summary(db)
     song_text = _format_song_list(songs)
+    behavioral_profile = await _build_behavioral_profile(db)
 
     user_prompt = f"""听众说："{user_request}"
 
 【音乐库概况】
 {library_summary}
 
+【听众听歌画像】
+{behavioral_profile}
+
 【候选曲目（{len(songs)} 首）】
 {song_text}
 
-请根据听众的心情选歌并生成电台脚本。"""
+请根据听众的心情和听歌画像选歌并生成电台脚本。"""
 
     text = await _call_deepseek(client, p["system_prompt"], user_prompt)
     return _parse_json_response(text)
@@ -231,6 +235,149 @@ async def _build_library_summary(db: AsyncSession) -> str:
     if genres:
         summary += "主要风格: " + ", ".join(f"{g[0]}({g[1]})" for g in genres) + "\n"
     return summary
+
+
+async def _build_behavioral_profile(db: AsyncSession) -> str:
+    """Build a behavioral profile summary from listening history for the AI prompt."""
+    from ..models.listening_history import ListeningHistory
+    from sqlalchemy import case, Integer
+
+    # Count total listen events
+    total_result = await db.execute(
+        select(func.count()).select_from(ListeningHistory)
+    )
+    total_listens = total_result.scalar() or 0
+
+    if total_listens == 0:
+        return "（尚未积累足够的听歌数据，请根据当前心情自由选歌）"
+
+    # Most played songs (completed)
+    top_songs_result = await db.execute(
+        select(
+            Song.name, Song.artist,
+            func.count().label("plays"),
+            func.avg(ListeningHistory.completion_rate).label("avg_completion"),
+        )
+        .join(Song, ListeningHistory.song_id == Song.id)
+        .where(ListeningHistory.event.in_(["started", "completed", "skipped"]))
+        .group_by(ListeningHistory.song_id)
+        .order_by(func.count().desc())
+        .limit(10)
+    )
+    top_songs = top_songs_result.all()
+
+    # Favorite artists (high completion rate, min 3 plays)
+    fav_artists_result = await db.execute(
+        select(
+            Song.artist,
+            func.count().label("total"),
+            func.sum(case((ListeningHistory.event == "completed", 1), else_=0)).label("completed"),
+        )
+        .join(Song, ListeningHistory.song_id == Song.id)
+        .where(ListeningHistory.event.in_(["started", "completed"]))
+        .group_by(Song.artist)
+        .having(func.count() >= 3)
+        .order_by((func.sum(case((ListeningHistory.event == "completed", 1), else_=0)) * 1.0 / func.count()).desc())
+        .limit(5)
+    )
+    fav_artists = fav_artists_result.all()
+
+    # Skipped artists (high skip rate, min 3 plays)
+    skip_artists_result = await db.execute(
+        select(
+            Song.artist,
+            func.count().label("total"),
+            func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)).label("skipped"),
+        )
+        .join(Song, ListeningHistory.song_id == Song.id)
+        .where(ListeningHistory.event.in_(["started", "skipped"]))
+        .group_by(Song.artist)
+        .having(func.count() >= 3)
+        .order_by((func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)) * 1.0 / func.count()).desc())
+        .limit(5)
+    )
+    skip_artists = skip_artists_result.all()
+
+    # Recently played songs (last 10, by started event)
+    recent_result = await db.execute(
+        select(Song.name, Song.artist)
+        .join(Song, ListeningHistory.song_id == Song.id)
+        .where(ListeningHistory.event == "started")
+        .order_by(ListeningHistory.listened_at.desc())
+        .limit(10)
+    )
+    recent_songs = recent_result.all()
+
+    # Time of day pattern
+    hour_result = await db.execute(
+        select(
+            func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
+            func.count(),
+        )
+        .where(ListeningHistory.event == "started")
+        .group_by(func.strftime("%H", ListeningHistory.listened_at))
+    )
+    morning = afternoon = evening = night = 0
+    for hour, cnt in hour_result.all():
+        if hour is None:
+            continue
+        if 6 <= hour < 12:
+            morning += cnt
+        elif 12 <= hour < 18:
+            afternoon += cnt
+        elif 18 <= hour < 23:
+            evening += cnt
+        else:
+            night += cnt
+
+    # Build profile string
+    lines = [f"总播放次数: {total_listens}"]
+
+    # Time pattern
+    time_parts = []
+    if night > 0:
+        time_parts.append(f"深夜({night}次)")
+    if evening > 0:
+        time_parts.append(f"傍晚({evening}次)")
+    if afternoon > 0:
+        time_parts.append(f"下午({afternoon}次)")
+    if morning > 0:
+        time_parts.append(f"早晨({morning}次)")
+    if time_parts:
+        lines.append(f"听歌时段偏好: {' > '.join(time_parts)}")
+
+    # Favorite artists
+    if fav_artists:
+        fav_lines = []
+        for artist, total, comp in fav_artists[:5]:
+            rate = round(comp / total * 100) if total > 0 else 0
+            fav_lines.append(f"{artist}(完播率{rate}%, 播{total}次)")
+        lines.append("最爱听的艺人: " + ", ".join(fav_lines))
+
+    # Skipped artists
+    if skip_artists:
+        skip_lines = []
+        for artist, total, skp in skip_artists[:3]:
+            rate = round(skp / total * 100) if total > 0 else 0
+            if rate > 30:
+                skip_lines.append(f"{artist}(跳过率{rate}%)")
+        if skip_lines:
+            lines.append("容易跳过的艺人(慎重推): " + ", ".join(skip_lines))
+
+    # Recently played (avoid repeats)
+    if recent_songs:
+        recent_lines = [f"{name} - {artist}" for name, artist in recent_songs[:5]]
+        lines.append("最近听过(避免重复): " + " | ".join(recent_lines))
+
+    # Top played songs
+    if top_songs:
+        song_lines = []
+        for name, artist, plays, avg_comp in top_songs[:5]:
+            comp_str = f", 平均听完{round(avg_comp * 100) if avg_comp else 0}%" if avg_comp else ""
+            song_lines.append(f"{name} - {artist}(播{plays}次{comp_str})")
+        lines.append("高频歌曲: " + "; ".join(song_lines))
+
+    return "\n".join(lines)
 
 
 def _format_song_list(songs: list[Song]) -> str:

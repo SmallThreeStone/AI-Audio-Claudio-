@@ -80,10 +80,15 @@ export interface TTSVoice {
 export interface MusicProfile {
   total_songs: number
   total_likes: number
+  total_listens: number
   genres: { name: string; count: number }[]
   moods: { name: string; count: number }[]
   bpm_buckets: { name: string; count: number }[]
   top_artists: { name: string; count: number }[]
+  recently_played: { song_id: number; name: string; artist: string; cover_url: string; listened_at: string }[]
+  completed_artists: { name: string; completion_rate: number; total_plays: number }[]
+  skipped_artists: { name: string; skip_rate: number; total_plays: number }[]
+  time_patterns: { morning: number; afternoon: number; evening: number; night: number }
 }
 
 export type WSMessageType =

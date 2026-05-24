@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { Howl } from 'howler'
 import { useStore } from '../store'
 import { radioWS } from '../api/ws'
-import { skipTrack, stopRadio } from '../api/radio'
+import { skipTrack, stopRadio, recordListenEvent } from '../api/radio'
 
 export function useRadioPlayer() {
   const {
@@ -57,6 +57,11 @@ export function useRadioPlayer() {
           const dur = howl.duration()
           setDuration(dur)
 
+          // Track listening: song started
+          if (!isTTS) {
+            recordListenEvent(item.id, 'started')
+          }
+
           progressRef.current = setInterval(() => {
             const seek = howl.seek() as number
             setCurrentTime(seek)
@@ -64,6 +69,12 @@ export function useRadioPlayer() {
           }, 1000)
         },
         onend: () => {
+          // Track listening: song completed
+          if (!isTTS) {
+            const endPos = howl.duration() || (useStore.getState().duration)
+            recordListenEvent(item.id, 'completed', endPos)
+          }
+
           setIsPlaying(false)
           setCurrentTime(0)
           setDuration(0)
@@ -129,6 +140,12 @@ export function useRadioPlayer() {
   }, [volume])
 
   const skip = useCallback(() => {
+    // Track listening: song skipped at current position
+    const store = useStore.getState()
+    if (howlRef.current && store.currentItem && store.currentItem.item_type === 'song') {
+      recordListenEvent(store.currentItem.id, 'skipped', store.currentTime)
+    }
+
     if (howlRef.current) {
       howlRef.current.stop()
       howlRef.current.unload()

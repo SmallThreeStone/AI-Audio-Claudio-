@@ -30,6 +30,10 @@ export async function recordFeedback(queueItemId: number, feedback: 'liked' | 'd
   await api.post('/radio/feedback', { queue_item_id: queueItemId, feedback })
 }
 
+export async function recordListenEvent(queueItemId: number, event: 'started' | 'completed' | 'skipped', positionSeconds: number = 0) {
+  await api.post('/radio/listen-event', { queue_item_id: queueItemId, event, position_seconds: positionSeconds })
+}
+
 export async function skipTrack() {
   await api.post('/radio/skip')
 }

@@ -2,7 +2,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, Integer, case
 from pydantic import BaseModel
 
 from ..database import get_session
@@ -10,6 +10,7 @@ from ..models.user import User
 from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
 from ..models.song import Song
+from ..models.listening_history import ListeningHistory
 from ..services.dj_engine import generate_radio_script, DJ_PERSONAS
 from ..services.queue_manager import build_queue_from_script, check_refill
 from ..routers.ws import ws_manager
@@ -25,6 +26,12 @@ class RadioRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     queue_item_id: int
     feedback: str  # 'liked' or 'disliked'
+
+
+class ListenEventRequest(BaseModel):
+    queue_item_id: int
+    event: str  # 'started', 'completed', 'skipped'
+    position_seconds: float = 0.0
 
 
 @router.post("/request")
@@ -233,9 +240,57 @@ async def record_feedback(body: FeedbackRequest, session: AsyncSession = Depends
     return {"status": "ok"}
 
 
+@router.post("/listen-event")
+async def record_listen_event(body: ListenEventRequest, session: AsyncSession = Depends(get_session)):
+    """Record a listening event (started/completed/skipped) for behavioral analysis."""
+    # Get queue item and song info
+    qi_result = await session.execute(select(QueueItem).where(QueueItem.id == body.queue_item_id))
+    qi = qi_result.scalar()
+    if not qi or not qi.song_id:
+        return {"status": "ok"}  # TTS items not tracked
+
+    # Get song duration
+    song_result = await session.execute(select(Song).where(Song.id == qi.song_id))
+    song = song_result.scalar()
+    duration_ms = song.duration_ms if song else 0
+
+    # Calculate completion rate
+    completion_rate = None
+    if body.event in ("completed", "skipped") and duration_ms > 0:
+        duration_sec = duration_ms / 1000.0
+        completion_rate = min(body.position_seconds / duration_sec, 1.0) if body.position_seconds > 0 else 0.0
+
+    # Get active user
+    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user = user_result.scalar()
+
+    entry = ListeningHistory(
+        user_id=user.id if user else None,
+        song_id=qi.song_id,
+        queue_item_id=body.queue_item_id,
+        session_id=qi.session_id,
+        event=body.event,
+        position_seconds=body.position_seconds if body.event != "started" else 0.0,
+        duration_ms=duration_ms,
+        completion_rate=completion_rate,
+    )
+    session.add(entry)
+
+    # Implicit feedback: high skip rate on a song → auto-dislike
+    # Skipped before 50% = implicit dislike
+    if body.event == "skipped" and completion_rate is not None and completion_rate < 0.5 and song:
+        song.dislike_count = (song.dislike_count or 0) + 1
+    # Completed >90% = implicit like
+    elif body.event == "completed" and completion_rate is not None and completion_rate > 0.9 and song:
+        song.like_count = (song.like_count or 0) + 1
+
+    await session.commit()
+    return {"status": "ok"}
+
+
 @router.get("/profile")
 async def music_profile(session: AsyncSession = Depends(get_session)):
-    """Get user's music taste profile for visualization."""
+    """Get user's music taste profile with behavioral insights."""
     # Genre distribution
     genre_result = await session.execute(
         select(Song.genre, func.count())
@@ -251,7 +306,6 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
         select(Song.mood_tags).where(Song.mood_tags != None)
     )
     mood_count = {}
-    import json
     for (tags,) in songs_with_moods.all():
         try:
             tag_list = json.loads(tags) if isinstance(tags, str) else tags
@@ -272,7 +326,6 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
         .group_by(Song.bpm)
     )
     bpm_data = [(b[0] or 0, b[1]) for b in bpm_result.all()]
-    # Bucket BPM into ranges
     bpm_buckets = {"慢 (<80)": 0, "中慢 (80-100)": 0, "中速 (100-120)": 0, "中快 (120-140)": 0, "快 (>140)": 0}
     for bpm, cnt in bpm_data:
         if bpm < 80:
@@ -286,7 +339,7 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
         else:
             bpm_buckets["快 (>140)"] += cnt
 
-    # Top artists
+    # Top artists (library)
     artist_result = await session.execute(
         select(Song.artist, func.count())
         .where(Song.artist != None)
@@ -303,13 +356,118 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     liked_result = await session.execute(select(func.sum(Song.like_count)).select_from(Song))
     total_likes = liked_result.scalar() or 0
 
+    # ===== Behavioral insights =====
+
+    # Total listen events
+    total_listens_result = await session.execute(
+        select(func.count()).select_from(ListeningHistory)
+    )
+    total_listens = total_listens_result.scalar() or 0
+
+    # Recently played (last 7 days, with song info)
+    recent = []
+    if total_listens > 0:
+        recent_result = await session.execute(
+            select(ListeningHistory, Song.name, Song.artist, Song.cover_url)
+            .join(Song, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event == "started")
+            .order_by(ListeningHistory.listened_at.desc())
+            .limit(20)
+        )
+        seen = set()
+        for lh, name, artist, cover in recent_result.all():
+            key = lh.song_id
+            if key in seen:
+                continue
+            seen.add(key)
+            recent.append({
+                "song_id": lh.song_id,
+                "name": name,
+                "artist": artist,
+                "cover_url": cover,
+                "listened_at": lh.listened_at.isoformat() if lh.listened_at else None,
+            })
+
+    # Most completed artists (high completion rate, min 3 plays)
+    completed_artists = []
+    if total_listens > 0:
+        comp_result = await session.execute(
+            select(
+                Song.artist,
+                func.count().label("total"),
+                func.sum(
+                    case((ListeningHistory.event == "completed", 1), else_=0)
+                ).label("completed"),
+            )
+            .join(Song, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event.in_(["started", "completed"]))
+            .group_by(Song.artist)
+            .having(func.count() >= 3)
+            .order_by((func.sum(case((ListeningHistory.event == "completed", 1), else_=0)) * 1.0 / func.count()).desc())
+            .limit(8)
+        )
+        for artist, total, comp in comp_result.all():
+            rate = round(comp / total * 100) if total > 0 else 0
+            completed_artists.append({"name": artist, "completion_rate": rate, "total_plays": total})
+
+    # Most skipped artists
+    skipped_artists = []
+    if total_listens > 0:
+        skip_result = await session.execute(
+            select(
+                Song.artist,
+                func.count().label("total"),
+                func.sum(
+                    case((ListeningHistory.event == "skipped", 1), else_=0)
+                ).label("skipped"),
+            )
+            .join(Song, ListeningHistory.song_id == Song.id)
+            .where(ListeningHistory.event.in_(["started", "skipped"]))
+            .group_by(Song.artist)
+            .having(func.count() >= 3)
+            .order_by((func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)) * 1.0 / func.count()).desc())
+            .limit(8)
+        )
+        for artist, total, skp in skip_result.all():
+            rate = round(skp / total * 100) if total > 0 else 0
+            skipped_artists.append({"name": artist, "skip_rate": rate, "total_plays": total})
+
+    # Time-of-day patterns
+    time_patterns = {"morning": 0, "afternoon": 0, "evening": 0, "night": 0}
+    if total_listens > 0:
+        # Use SQLite strftime to get hour
+        hour_result = await session.execute(
+            select(
+                func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
+                func.count(),
+            )
+            .where(ListeningHistory.event == "started")
+            .group_by(func.strftime("%H", ListeningHistory.listened_at))
+        )
+        for hour, cnt in hour_result.all():
+            if hour is None:
+                continue
+            if 6 <= hour < 12:
+                time_patterns["morning"] += cnt
+            elif 12 <= hour < 18:
+                time_patterns["afternoon"] += cnt
+            elif 18 <= hour < 23:
+                time_patterns["evening"] += cnt
+            else:
+                time_patterns["night"] += cnt
+
     return {
         "total_songs": total_songs,
         "total_likes": total_likes,
+        "total_listens": total_listens,
         "genres": genres,
         "moods": moods,
         "bpm_buckets": [{"name": k, "count": v} for k, v in bpm_buckets.items()],
         "top_artists": artists,
+        "recently_played": recent[:10],
+        "completed_artists": completed_artists,
+        "skipped_artists": skipped_artists,
+        "time_patterns": time_patterns,
     }
 
 
