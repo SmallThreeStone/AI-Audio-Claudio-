@@ -2,9 +2,14 @@ import { useEffect, useRef, useCallback } from 'react'
 import { Howl } from 'howler'
 import { useStore } from '../store'
 import { radioWS } from '../api/ws'
+import { skipTrack, stopRadio } from '../api/radio'
 
 export function useRadioPlayer() {
-  const { queue, currentIndex, volume, setCurrentTime, setDuration, setCurrentItem, setIsPlaying } = useStore()
+  const {
+    queue, currentIndex, volume,
+    setCurrentTime, setDuration, setCurrentItem, setIsPlaying,
+    setCurrentIndex, setSession, setQueue,
+  } = useStore()
   const howlRef = useRef<Howl | null>(null)
   const progressRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const currentIdxRef = useRef(currentIndex)
@@ -27,13 +32,13 @@ export function useRadioPlayer() {
       }
 
       setCurrentItem(item)
+      setCurrentIndex(index)
       currentIdxRef.current = index
 
       const isTTS = item.item_type.startsWith('tts')
       const src = isTTS ? item.tts_audio_url : `/api/audio/music/${item.song_id}`
 
       if (!src) {
-        // Song has no playable URL - skip
         radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: 'no_url' })
         const next = index + 1
         if (next < queue.length) {
@@ -64,10 +69,8 @@ export function useRadioPlayer() {
           setDuration(0)
           if (progressRef.current) clearInterval(progressRef.current)
 
-          // Advance to next item
           const next = currentIdxRef.current + 1
           if (next >= queue.length) {
-            // Queue exhausted - request refill via HTTP + WS
             radioWS.send({ type: 'refill' })
           } else {
             playItem(next)
@@ -97,18 +100,22 @@ export function useRadioPlayer() {
 
   // Listen for queue updates from WebSocket (new session created)
   useEffect(() => {
+    let lastSessionId: number | null = null
+
     const unsub = radioWS.on('queue_update', (msg) => {
       const items = msg.items as Array<Record<string, unknown>>
-      const playingIndex = msg.playing_index as number
+      const newSessionId = (msg.session as Record<string, unknown>)?.id as number | undefined
 
-      // Check if this is a new queue (different from current)
-      if (items && items.length > 0) {
-        // Start playing the new queue
+      // Only reset player for a brand-new session, not for skip/refill updates
+      if (items && items.length > 0 && newSessionId !== undefined && newSessionId !== lastSessionId) {
+        lastSessionId = newSessionId
         if (howlRef.current) {
           howlRef.current.unload()
           howlRef.current = null
         }
-        // queue will be updated via store, then the effect above fires
+        if (progressRef.current) {
+          clearInterval(progressRef.current)
+        }
       }
     })
     return unsub
@@ -124,9 +131,20 @@ export function useRadioPlayer() {
   const skip = useCallback(() => {
     if (howlRef.current) {
       howlRef.current.stop()
+      howlRef.current.unload()
+      howlRef.current = null
+    }
+    if (progressRef.current) {
+      clearInterval(progressRef.current)
     }
     radioWS.send({ type: 'command', action: 'skip' })
-  }, [])
+    skipTrack()
+
+    const next = currentIdxRef.current + 1
+    if (next < queue.length) {
+      playItem(next)
+    }
+  }, [queue, playItem])
 
   const stop = useCallback(() => {
     if (howlRef.current) {
@@ -140,7 +158,12 @@ export function useRadioPlayer() {
     setIsPlaying(false)
     setCurrentTime(0)
     setCurrentItem(null)
-  }, [])
+    setCurrentIndex(0)
+    setQueue([])
+    setSession(null)
+    radioWS.send({ type: 'command', action: 'stop' })
+    stopRadio()
+  }, [setIsPlaying, setCurrentTime, setCurrentItem, setCurrentIndex, setQueue, setSession])
 
   return { skip, stop }
 }

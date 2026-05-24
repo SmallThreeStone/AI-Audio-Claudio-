@@ -1,24 +1,17 @@
 import { useStore } from '../../store'
-import { radioWS } from '../../api/ws'
-import { skipTrack, stopRadio } from '../../api/radio'
 
-export default function PlayerControls() {
-  const { isPlaying, currentTime, duration, volume, session, setVolume, queue } = useStore()
+interface Props {
+  onSkip: () => void
+  onStop: () => void
+}
+
+export default function PlayerControls({ onSkip, onStop }: Props) {
+  const { currentTime, duration, volume, session, setVolume, queue } = useStore()
 
   const hasPlayableItems = queue.some(
     (item) => item.status !== 'error' && item.status !== 'skipped'
   )
   if (!session || !hasPlayableItems) return null
-
-  const handleSkip = () => {
-    radioWS.send({ type: 'command', action: 'skip' })
-    skipTrack()
-  }
-
-  const handleStop = () => {
-    radioWS.send({ type: 'command', action: 'stop' })
-    stopRadio()
-  }
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
@@ -47,7 +40,7 @@ export default function PlayerControls() {
       {/* Controls */}
       <div className="flex items-center justify-center gap-4">
         <button
-          onClick={handleStop}
+          onClick={onStop}
           className="w-10 h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors"
           title="停止"
         >
@@ -57,7 +50,7 @@ export default function PlayerControls() {
         </button>
 
         <button
-          onClick={handleSkip}
+          onClick={onSkip}
           className="w-12 h-12 rounded-full bg-[var(--color-radio-accent)] flex items-center justify-center hover:bg-[var(--color-radio-accent-dim)] transition-colors"
           title="下一首"
         >

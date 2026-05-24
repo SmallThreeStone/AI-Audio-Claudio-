@@ -111,22 +111,54 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 
 请根据听众的心情选歌并生成电台脚本。"""
 
-    response = await client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
-        max_tokens=4096,
-        messages=[
-            {"role": "system", "content": p["system_prompt"]},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    text = await _call_deepseek(client, p["system_prompt"], user_prompt)
+    return _parse_json_response(text)
 
-    text = response.choices[0].message.content or ""
+
+async def _call_deepseek(client: AsyncOpenAI, system_prompt: str, user_prompt: str, retries: int = 2, max_tokens: int = 4096) -> str:
+    """Call DeepSeek API with retry on failure."""
+    last_error = None
+    for attempt in range(retries):
+        try:
+            response = await client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                import asyncio
+                await asyncio.sleep(2)
+    raise last_error or Exception("DeepSeek API call failed")
+
+
+def _parse_json_response(text: str) -> dict:
+    """Parse JSON from LLM response, handling common formatting issues."""
     text = text.strip()
+    # Remove markdown code blocks
     if text.startswith("```"):
         lines = text.split("\n")
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-
-    return json.loads(text)
+        text = text.strip()
+    # Try direct parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Try to find JSON object in text
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f"Failed to parse JSON from response: {text[:200]}...")
 
 
 async def generate_continuation(db: AsyncSession, original_request: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
@@ -155,22 +187,8 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
 请选 {count} 首歌继续这场电台，保持相同氛围。返回 JSON：
 {{"script": [{{"type": "song", "song_id": ..., "intro_text": "..."}},...]}}"""
 
-    response = await client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
-        max_tokens=2048,
-        messages=[
-            {"role": "system", "content": p["system_prompt"]},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
-
-    text = response.choices[0].message.content or ""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-
-    return json.loads(text)
+    text = await _call_deepseek(client, p["system_prompt"], user_prompt, max_tokens=2048)
+    return _parse_json_response(text)
 
 
 async def _get_song_candidates(db: AsyncSession, limit: int = 200, exclude_ids: list[int] | None = None) -> list[Song]:

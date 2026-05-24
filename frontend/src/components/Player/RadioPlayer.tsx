@@ -1,4 +1,5 @@
 import { useStore } from '../../store'
+import { useRadioPlayer } from '../../hooks/useRadioPlayer'
 import VinylDisc from './VinylDisc'
 import NowPlaying from './NowPlaying'
 import PlayerControls from './PlayerControls'
@@ -13,6 +14,7 @@ const STAGES = [
 
 export default function RadioPlayer() {
   const { session, isGenerating, currentItem, generationStage, generationMessage } = useStore()
+  const { skip, stop } = useRadioPlayer()
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
 
@@ -69,7 +71,7 @@ export default function RadioPlayer() {
       )}
 
       <NowPlaying />
-      <PlayerControls />
+      <PlayerControls onSkip={skip} onStop={stop} />
       <SleepTimer />
     </div>
   )

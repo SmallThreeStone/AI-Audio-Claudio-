@@ -11,7 +11,7 @@ import ScriptTranscript from './components/Player/ScriptTranscript'
 import ShortcutHelp from './components/common/ShortcutHelp'
 import MusicProfilePanel from './components/Library/MusicProfile'
 import { useWebSocket } from './hooks/useWebSocket'
-import { useRadioPlayer } from './hooks/useRadioPlayer'
+
 import { getAuthStatus } from './api/auth'
 
 function MainApp() {
@@ -59,7 +59,6 @@ function MainApp() {
   }, [])
 
   useWebSocket()
-  useRadioPlayer()
 
   if (checking) {
     return (
