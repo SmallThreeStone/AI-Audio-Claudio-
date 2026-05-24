@@ -71,5 +71,10 @@ class NeteaseClient:
     async def like_list(self, uid: int, cookies: dict) -> dict:
         return await self._get("/likelist", {"uid": uid}, cookies=cookies)
 
+    # --- Listening History ---
+    async def user_record(self, uid: int, cookies: dict, record_type: int = 0) -> dict:
+        """Get user listening history. type=0 for all-time, type=1 for weekly."""
+        return await self._get("/user/record", {"uid": uid, "type": record_type}, cookies=cookies)
+
 
 netease = NeteaseClient()

@@ -11,7 +11,7 @@ class ListeningHistory(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     song_id: Mapped[int | None] = mapped_column(ForeignKey("songs.id", ondelete="SET NULL"))
-    queue_item_id: Mapped[int | None] = mapped_column(Integer)
+    queue_item_id: Mapped[int | None] = mapped_column(ForeignKey("queue_items.id", ondelete="SET NULL"))
     session_id: Mapped[int | None] = mapped_column(ForeignKey("dj_sessions.id", ondelete="SET NULL"))
     event: Mapped[str] = mapped_column(String(20), nullable=False)  # started, completed, skipped
     position_seconds: Mapped[float | None] = mapped_column(Float)

@@ -539,6 +539,31 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     }
 
 
+@router.get("/distillation")
+async def get_distillation(session: AsyncSession = Depends(get_session)):
+    """Get AI-distilled music taste insights with cross-dimension correlations."""
+    from ..services.distillation_service import distill
+    import dataclasses
+    result = await distill(session)
+    return {
+        "meta": result.meta,
+        "persona_paragraph": result.persona_paragraph,
+        "netease_affinity": dataclasses.asdict(result.netease_affinity) if result.netease_affinity else None,
+        "time_affinity": [dataclasses.asdict(e) for e in result.time_affinity],
+        "weather_affinity": [dataclasses.asdict(e) for e in result.weather_affinity],
+        "scene_affinity": [dataclasses.asdict(e) for e in result.scene_affinity],
+        "cross_insights": [dataclasses.asdict(e) for e in result.cross_insights],
+    }
+
+
+@router.post("/import-netease-history")
+async def import_netease_history(session: AsyncSession = Depends(get_session)):
+    """Import the user's all-time NetEase Cloud Music listening history."""
+    from ..services.netease_import_service import import_netease_history
+    result = await import_netease_history(session)
+    return result
+
+
 async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
     items_result = await db.execute(
         select(QueueItem)

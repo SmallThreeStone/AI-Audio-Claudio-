@@ -263,11 +263,22 @@ async def _build_library_summary(db: AsyncSession) -> str:
 
 
 async def _build_behavioral_profile(db: AsyncSession) -> str:
-    """Build a behavioral profile summary from listening history for the AI prompt."""
+    """Build a behavioral profile summary — uses distillation if data is sufficient,
+    falls back to raw stats otherwise."""
     from ..models.listening_history import ListeningHistory
     from sqlalchemy import case, Integer
 
-    # Count total listen events
+    # Try distillation first
+    try:
+        from .distillation_service import distill
+        result = await distill(db)
+        if not result.meta.get("insufficient_data", True):
+            return result.persona_paragraph
+    except Exception as e:
+        print(f"Distillation failed, falling back to basic profile: {e}")
+
+    # ── Fallback: raw stats for new users ──
+
     total_result = await db.execute(
         select(func.count()).select_from(ListeningHistory)
     )
