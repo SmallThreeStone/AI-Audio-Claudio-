@@ -39,5 +39,10 @@ WEATHER_ENABLED = os.getenv("WEATHER_ENABLED", "true").lower() == "true"
 DLNA_ENABLED = os.getenv("DLNA_ENABLED", "true").lower() == "true"
 LAN_IP = os.getenv("LAN_IP", "")  # Auto-detected if empty
 
+# Google Calendar
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+CALENDAR_ENABLED = os.getenv("CALENDAR_ENABLED", "false").lower() == "true"
+
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TTS_CACHE_DIR, exist_ok=True)

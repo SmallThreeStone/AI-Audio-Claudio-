@@ -15,6 +15,7 @@ class User(Base):
     cookies_json: Mapped[str | None] = mapped_column(Text)
     login_status: Mapped[str] = mapped_column(String(20), default="logged_out")
     qr_key: Mapped[str | None] = mapped_column(String(64))
+    google_token_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

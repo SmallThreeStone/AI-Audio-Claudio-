@@ -96,7 +96,7 @@ DJ_PERSONAS = {
 }
 
 
-async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
+async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None) -> dict:
     """Generate a radio script using DeepSeek. Returns parsed JSON."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
 
@@ -110,7 +110,11 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     if weather_info:
         weather_block = f"\n【当前天气】\n{weather_info}\n"
 
-    user_prompt = f"""听众说："{user_request}"{weather_block}
+    calendar_block = ""
+    if calendar_info:
+        calendar_block = f"\n【日程提醒】\n{calendar_info}\n"
+
+    user_prompt = f"""听众说："{user_request}"{weather_block}{calendar_block}
 
 【音乐库概况】
 {library_summary}
@@ -121,7 +125,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 【候选曲目（{len(songs)} 首）】
 {song_text}
 
-请根据听众的心情、天气和听歌画像选歌并生成电台脚本。"""
+请根据听众的心情、天气、日程和听歌画像选歌并生成电台脚本。"""
 
     text = await _call_deepseek(client, p["system_prompt"], user_prompt)
     return _parse_json_response(text)

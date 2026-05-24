@@ -11,3 +11,5 @@ pydantic-settings==2.*
 websockets>=13.0
 async-upnp-client>=0.47
 aiohttp>=3.9
+google-auth-oauthlib>=1.0
+google-api-python-client>=2.0

@@ -18,6 +18,7 @@ async def init_db():
         # Migrations: add columns that don't exist yet (SQLite-safe, ignore duplicates)
         _migrations = [
             "ALTER TABLE dj_sessions ADD COLUMN weather_summary TEXT",
+            "ALTER TABLE users ADD COLUMN google_token_json TEXT",
         ]
         for sql in _migrations:
             try:

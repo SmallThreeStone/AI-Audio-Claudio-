@@ -14,6 +14,8 @@ from ..models.listening_history import ListeningHistory
 from ..services.dj_engine import generate_radio_script, DJ_PERSONAS
 from ..services.queue_manager import build_queue_from_script, check_refill
 from ..services.weather_service import get_weather_summary
+from ..services.greeting_service import build_greeting
+from ..services.calendar_service import get_upcoming_events, build_calendar_summary
 from ..routers.ws import ws_manager
 
 router = APIRouter(prefix="/api/radio", tags=["radio"])
@@ -53,6 +55,14 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     client_ip = req.client.host if req.client else "127.0.0.1"
     weather_summary = await get_weather_summary(client_ip)
 
+    # Fetch calendar context
+    calendar_summary = None
+    try:
+        events = await get_upcoming_events(session)
+        calendar_summary = build_calendar_summary(events)
+    except Exception:
+        pass
+
     # Create session
     dj_session = DJSession(
         user_id=user.id,
@@ -77,7 +87,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
 
     try:
         await _progress("analyzing", "AI 正在感受你的心情...")
-        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary)
+        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
         await session.commit()
@@ -222,6 +232,17 @@ async def list_personas():
         }
         for pid, p in DJ_PERSONAS.items()
     ]
+
+
+@router.get("/greeting")
+async def get_greeting(session: AsyncSession = Depends(get_session)):
+    """Get a context-aware greeting based on time, weather, and listening history."""
+    weather_summary = None
+    try:
+        weather_summary = await get_weather_summary("127.0.0.1")  # Will use default/fallback
+    except Exception:
+        pass
+    return await build_greeting(session, weather_summary)
 
 
 @router.post("/feedback")
