@@ -31,7 +31,7 @@ async def _recent_artists(db: AsyncSession, days: int = 3) -> list[str]:
     since = datetime.datetime.now() - datetime.timedelta(days=days)
     result = await db.execute(
         select(Song.artist, func.count().label("c"))
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(
             ListeningHistory.event == "started",
             ListeningHistory.listened_at >= since,
@@ -46,12 +46,9 @@ async def _recent_artists(db: AsyncSession, days: int = 3) -> list[str]:
 
 async def _top_mood_in_time_slot(db: AsyncSession) -> str:
     """Find the most-played mood/genre during the current time slot."""
-    h = datetime.datetime.now().hour
-    start_h, end_h = max(0, h - 1), min(23, h + 1)
-
     result = await db.execute(
         select(Song.genre, func.count().label("c"))
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(
             ListeningHistory.event == "started",
             ListeningHistory.listened_at >= datetime.datetime.now() - datetime.timedelta(days=30),
@@ -71,29 +68,26 @@ async def build_greeting(db: AsyncSession, weather_summary: str | None = None) -
     artists = await _recent_artists(db)
     top_genre = await _top_mood_in_time_slot(db)
 
-    parts = [time_label]
+    greeting_parts = [time_label]
 
     # Weather
     if weather_summary:
-        # Extract a short weather snippet (first sentence)
         short = weather_summary.split("。")[0].replace("今天天气", "今天")
         if len(short) > 20:
             short = short[:20]
-        parts.append(short)
-
-    parts.append("~")
+        greeting_parts.append(short)
 
     # Recent artists hook
     if artists:
         arty = "、".join(artists[:3])
-        parts.append(f"你最近在听 {arty}")
+        greeting_parts.append(f"你最近在听 {arty}")
 
     # Genre hint
     suggested_mood = time_mood
     if top_genre:
         suggested_mood = f"{time_mood}、{top_genre}"
 
-    greeting_text = "，".join(parts) + "。"
+    greeting_text = "，".join(greeting_parts) + "。"
 
     return {
         "greeting_text": greeting_text,
