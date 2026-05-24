@@ -14,6 +14,7 @@ DJ_PERSONAS = {
         "tagline": "温暖治愈 · 深夜陪伴",
         "voice": "zh-CN-XiaoxiaoNeural",
         "style": "温暖治愈系，像朋友深夜聊天",
+        "emotion_tags": "[gentle]",
         "system_prompt": """你是一个深夜电台 DJ，叫"小雨"，在 FM 107.5 "Claude FM" 用声音陪伴听众。
 
 你的听众用文字告诉你 ta 现在的心情或状态，你要：
@@ -38,6 +39,7 @@ DJ_PERSONAS = {
         "tagline": "摇滚老炮 · 激情澎湃",
         "voice": "zh-CN-YunjianNeural",
         "style": "摇滚老炮，热情奔放，爱聊音乐故事",
+        "emotion_tags": "[super happy]",
         "system_prompt": """你是一个摇滚电台 DJ，叫"老王"，在 FM 107.5 "Claude FM" 做了一辈子音乐节目。
 
 说话风格：
@@ -57,6 +59,7 @@ DJ_PERSONAS = {
         "tagline": "爵士鉴赏 · 优雅格调",
         "voice": "zh-CN-XiaoyiNeural",
         "style": "优雅爵士鉴赏家，品味精致，语气从容",
+        "emotion_tags": "[calm]",
         "system_prompt": """你是一个爵士/古典电台 DJ，叫"乔希"，在 FM 107.5 "Claude FM" 分享有格调的音乐。
 
 说话风格：
@@ -76,6 +79,7 @@ DJ_PERSONAS = {
         "tagline": "电音玩家 · 前卫潮流",
         "voice": "zh-CN-XiaoxiaoNeural",
         "style": "电音/潮流玩家，年轻活力，懂二次元",
+        "emotion_tags": "[energetic]",
         "system_prompt": """你是一个潮流音乐 DJ，叫"小艾"，在 FM 107.5 "Claude FM" 带听众玩转最新最酷的音乐。
 
 说话风格：
@@ -92,7 +96,7 @@ DJ_PERSONAS = {
 }
 
 
-async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu") -> dict:
+async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
     """Generate a radio script using DeepSeek. Returns parsed JSON."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
 
@@ -102,7 +106,11 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     song_text = _format_song_list(songs)
     behavioral_profile = await _build_behavioral_profile(db)
 
-    user_prompt = f"""听众说："{user_request}"
+    weather_block = ""
+    if weather_info:
+        weather_block = f"\n【当前天气】\n{weather_info}\n"
+
+    user_prompt = f"""听众说："{user_request}"{weather_block}
 
 【音乐库概况】
 {library_summary}
@@ -113,7 +121,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 【候选曲目（{len(songs)} 首）】
 {song_text}
 
-请根据听众的心情和听歌画像选歌并生成电台脚本。"""
+请根据听众的心情、天气和听歌画像选歌并生成电台脚本。"""
 
     text = await _call_deepseek(client, p["system_prompt"], user_prompt)
     return _parse_json_response(text)

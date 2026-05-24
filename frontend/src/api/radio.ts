@@ -1,5 +1,5 @@
 import api from './client'
-import type { DJSession, DJPersona, MusicProfile, TTSVoice } from '../types'
+import type { DJSession, DJPersona, MusicProfile, TTSVoice, DlnaDevice } from '../types'
 
 export async function requestRadio(text: string, persona: string = 'xiaoyu') {
   const { data } = await api.post('/radio/request', { text, persona })
@@ -45,4 +45,24 @@ export async function stopRadio() {
 export async function getVoices() {
   const { data } = await api.get('/settings/voices')
   return data.voices as TTSVoice[]
+}
+
+// DLNA
+
+export async function getDlnaDevices(force = false) {
+  const { data } = await api.get('/dlna/devices', { params: { force } })
+  return data.devices as DlnaDevice[]
+}
+
+export async function pushToDevice(deviceLocation: string, songId: number, title: string) {
+  const { data } = await api.post('/dlna/play', {
+    device_location: deviceLocation,
+    song_id: songId,
+    title,
+  })
+  return data
+}
+
+export async function stopDevice(deviceLocation: string) {
+  await api.post('/dlna/stop', { device_location: deviceLocation })
 }

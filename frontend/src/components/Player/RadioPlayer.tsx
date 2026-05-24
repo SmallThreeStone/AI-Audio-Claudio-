@@ -4,6 +4,7 @@ import VinylDisc from './VinylDisc'
 import NowPlaying from './NowPlaying'
 import PlayerControls from './PlayerControls'
 import SleepTimer from './SleepTimer'
+import SpeakerSelector from './SpeakerSelector'
 
 const STAGES = [
   { key: 'analyzing', label: 'AI 感受你的心情' },
@@ -70,8 +71,15 @@ export default function RadioPlayer() {
         </div>
       )}
 
+      {session?.weather_summary && (
+        <div className="text-[11px] text-[var(--color-radio-muted)] bg-white/5 rounded-full px-3 py-0.5 backdrop-blur-sm">
+          {session.weather_summary}
+        </div>
+      )}
+
       <NowPlaying />
       <PlayerControls onSkip={skip} onStop={stop} />
+      <SpeakerSelector />
       <SleepTimer />
     </div>
   )

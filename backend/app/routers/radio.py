@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, Integer, case
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ from ..models.song import Song
 from ..models.listening_history import ListeningHistory
 from ..services.dj_engine import generate_radio_script, DJ_PERSONAS
 from ..services.queue_manager import build_queue_from_script, check_refill
+from ..services.weather_service import get_weather_summary
 from ..routers.ws import ws_manager
 
 router = APIRouter(prefix="/api/radio", tags=["radio"])
@@ -35,7 +36,7 @@ class ListenEventRequest(BaseModel):
 
 
 @router.post("/request")
-async def request_radio(body: RadioRequest, session: AsyncSession = Depends(get_session)):
+async def request_radio(body: RadioRequest, req: Request, session: AsyncSession = Depends(get_session)):
     user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
     user = user_result.scalar()
     if not user:
@@ -48,12 +49,17 @@ async def request_radio(body: RadioRequest, session: AsyncSession = Depends(get_
     if total == 0:
         raise HTTPException(status_code=400, detail="No songs in library. Import playlists first.")
 
+    # Fetch weather context
+    client_ip = req.client.host if req.client else "127.0.0.1"
+    weather_summary = await get_weather_summary(client_ip)
+
     # Create session
     dj_session = DJSession(
         user_id=user.id,
         user_request=body.text,
         status="generating",
         persona=body.persona,
+        weather_summary=weather_summary,
     )
     session.add(dj_session)
     await session.commit()
@@ -71,7 +77,7 @@ async def request_radio(body: RadioRequest, session: AsyncSession = Depends(get_
 
     try:
         await _progress("analyzing", "AI 正在感受你的心情...")
-        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona)
+        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
         await session.commit()
@@ -105,6 +111,7 @@ async def list_sessions(session: AsyncSession = Depends(get_session)):
             "persona": s.persona or "xiaoyu",
             "total_items": s.total_items,
             "played_items": s.played_items,
+            "weather_summary": s.weather_summary,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         }
         for s in sessions
@@ -182,6 +189,7 @@ def _session_status_msg(s: DJSession) -> dict:
             "persona": s.persona or "xiaoyu",
             "total_items": s.total_items,
             "played_items": s.played_items,
+            "weather_summary": s.weather_summary,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         },
         "message": _status_message(s.status),
@@ -518,6 +526,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
             "persona": s.persona or "xiaoyu",
             "total_items": s.total_items,
             "played_items": s.played_items,
+            "weather_summary": s.weather_summary,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         },
         "items": enriched,

@@ -9,3 +9,5 @@ python-multipart==0.0.*
 pydantic==2.*
 pydantic-settings==2.*
 websockets>=13.0
+async-upnp-client>=0.47
+aiohttp>=3.9

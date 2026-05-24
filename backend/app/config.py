@@ -20,8 +20,24 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("ANTHROPIC_AUT
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
+# TTS Provider: "edge" (default) or "fish"
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "edge")
 TTS_VOICE = os.getenv("TTS_VOICE", "zh-CN-XiaoxiaoNeural")
 TTS_RATE = os.getenv("TTS_RATE", "+10%")
+
+# Fish Audio TTS
+FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
+FISH_AUDIO_BASE_URL = os.getenv("FISH_AUDIO_BASE_URL", "https://api.fish.audio")
+FISH_AUDIO_REFERENCE_ID = os.getenv("FISH_AUDIO_REFERENCE_ID", "")
+FISH_AUDIO_EMOTION_TAGS = os.getenv("FISH_AUDIO_EMOTION_TAGS", "true").lower() == "true"
+
+# OpenWeather API
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
+WEATHER_ENABLED = os.getenv("WEATHER_ENABLED", "true").lower() == "true"
+
+# DLNA / UPnP streaming
+DLNA_ENABLED = os.getenv("DLNA_ENABLED", "true").lower() == "true"
+LAN_IP = os.getenv("LAN_IP", "")  # Auto-detected if empty
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TTS_CACHE_DIR, exist_ok=True)

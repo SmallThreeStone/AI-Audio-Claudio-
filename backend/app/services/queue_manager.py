@@ -18,6 +18,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
         persona = s.persona
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
     voice = p["voice"]
+    emotion_tags = p.get("emotion_tags", "")
 
     position = start_position
     tts_tasks = []
@@ -114,7 +115,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
     if tts_tasks and progress_callback:
         await progress_callback("synthesizing", f"正在合成 {len(tts_tasks)} 段 DJ 语音...")
     if tts_tasks:
-        paths = await generate_tts_batch(tts_tasks)
+        paths = await generate_tts_batch(tts_tasks, emotion_tags)
         for item_id, audio_path in paths.items():
             result = await db.execute(select(QueueItem).where(QueueItem.id == item_id))
             qi = result.scalar()

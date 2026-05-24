@@ -17,6 +17,7 @@ class DJSession(Base):
     persona: Mapped[str | None] = mapped_column(String(64), default="xiaoyu")
     total_items: Mapped[int] = mapped_column(Integer, default=0)
     played_items: Mapped[int] = mapped_column(Integer, default=0)
+    weather_summary: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

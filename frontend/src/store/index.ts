@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { User, Playlist, QueueItem, DJSession } from '../types'
+import type { User, Playlist, QueueItem, DJSession, DlnaDevice } from '../types'
 
 interface AuthSlice {
   user: User | null
@@ -43,6 +43,15 @@ interface QueueSlice {
   setGenerationProgress: (stage: string, message: string) => void
 }
 
+interface DlnaSlice {
+  dlnaDevices: DlnaDevice[]
+  activeDlnaDevice: DlnaDevice | null
+  isDiscovering: boolean
+  setDlnaDevices: (devices: DlnaDevice[]) => void
+  setActiveDlnaDevice: (device: DlnaDevice | null) => void
+  setIsDiscovering: (discovering: boolean) => void
+}
+
 interface SettingsSlice {
   selectedPersona: string
   sleepTimerMinutes: number
@@ -58,7 +67,7 @@ interface SettingsSlice {
   setShowSettings: (show: boolean) => void
 }
 
-export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice & SettingsSlice>((set) => ({
+export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice & DlnaSlice & SettingsSlice>((set) => ({
   // Auth
   user: null,
   isLoggedIn: false,
@@ -96,6 +105,14 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   setSession: (session) => set({ session }),
   setIsGenerating: (isGenerating) => set({ isGenerating }),
   setGenerationProgress: (stage, message) => set({ generationStage: stage, generationMessage: message }),
+
+  // DLNA
+  dlnaDevices: [],
+  activeDlnaDevice: null,
+  isDiscovering: false,
+  setDlnaDevices: (devices) => set({ dlnaDevices: devices }),
+  setActiveDlnaDevice: (device) => set({ activeDlnaDevice: device }),
+  setIsDiscovering: (discovering) => set({ isDiscovering: discovering }),
 
   // Settings
   selectedPersona: 'xiaoyu',

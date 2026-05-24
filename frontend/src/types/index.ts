@@ -58,6 +58,7 @@ export interface DJSession {
   persona?: string
   total_items: number
   played_items: number
+  weather_summary?: string
   created_at: string
 }
 
@@ -89,6 +90,13 @@ export interface MusicProfile {
   completed_artists: { name: string; completion_rate: number; total_plays: number }[]
   skipped_artists: { name: string; skip_rate: number; total_plays: number }[]
   time_patterns: { morning: number; afternoon: number; evening: number; night: number }
+}
+
+export interface DlnaDevice {
+  udn: string
+  name: string
+  location: string
+  manufacturer: string
 }
 
 export type WSMessageType =

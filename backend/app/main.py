@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from .database import init_db, async_session
 from .models.user import User
-from .routers import auth, playlists, songs, radio, audio, ws
+from .routers import auth, playlists, songs, radio, audio, ws, dlna
 from .services.sidecar_manager import sidecar
 from .utils.cookie_store import load_cookies
 
@@ -69,8 +69,8 @@ app = FastAPI(title="AI Radio - Claudio FM", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,6 +81,7 @@ app.include_router(songs.router)
 app.include_router(radio.router)
 app.include_router(audio.router)
 app.include_router(ws.router)
+app.include_router(dlna.router)
 
 
 @app.get("/api/health")

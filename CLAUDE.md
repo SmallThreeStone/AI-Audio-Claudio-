@@ -23,12 +23,13 @@ cd ../frontend && npm install
 node node_modules/@neteasecloudmusicapienhanced/api/main.js
 # 默认监听 http://localhost:3000
 
-# 4. 启动后端
-cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# 4. 启动后端（监听所有网络接口，支持局域网访问）
+cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# 5. 启动前端
+# 5. 启动前端（监听所有网络接口，支持局域网访问）
 cd frontend && npm run dev
-# 访问 http://localhost:5173
+# 本机访问: http://localhost:5173
+# 局域网访问: http://<本机IP>:5173
 ```
 
 ## 项目结构
