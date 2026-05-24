@@ -3,6 +3,8 @@ import { useStore } from './store'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import LoginModal from './components/Login/LoginModal'
 import Layout from './components/Layout/Layout'
+import AdminDashboard from './components/Admin/AdminDashboard'
+import InstallPrompt from './components/PWA/InstallPrompt'
 import RadioPlayer from './components/Player/RadioPlayer'
 import ChatInput from './components/Chat/ChatInput'
 import QueuePanel from './components/Queue/QueuePanel'
@@ -15,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { getAuthStatus } from './api/auth'
 
 function MainApp() {
-  const { isLoggedIn, setUser, setShowTranscript, setShowShortcuts, session } = useStore()
+  const { isLoggedIn, showAdmin, setUser, setShowTranscript, setShowShortcuts, session } = useStore()
   const [checking, setChecking] = useState(true)
 
   // Keyboard shortcuts
@@ -51,6 +53,7 @@ function MainApp() {
             nickname: data.nickname || '',
             avatar_url: data.avatar_url || '',
             login_status: 'logged_in',
+            role: (data.role as 'admin' | 'user') || 'user',
           })
         }
       })
@@ -74,6 +77,8 @@ function MainApp() {
         <div className="min-h-screen flex items-center justify-center">
           <LoginModal />
         </div>
+      ) : showAdmin ? (
+        <AdminDashboard />
       ) : (
         <Layout>
           <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full">
@@ -94,6 +99,7 @@ function MainApp() {
 
       <ScriptTranscript />
       <ShortcutHelp />
+      <InstallPrompt />
     </div>
   )
 }

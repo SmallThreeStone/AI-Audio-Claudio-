@@ -56,6 +56,7 @@ export default function LoginModal() {
               nickname: result.nickname,
               avatar_url: result.avatar_url,
               login_status: 'logged_in',
+              role: (result.role as 'admin' | 'user') || 'user',
             })
             break
         }

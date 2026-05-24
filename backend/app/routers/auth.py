@@ -8,6 +8,7 @@ from ..database import get_session
 from ..models.user import User
 from ..services.netease_client import netease
 from ..utils.cookie_store import save_cookies, clear_cookies
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,13 @@ async def qr_status(key: str, session: AsyncSession = Depends(get_session)):
             user.avatar_url = profile.get("avatarUrl")
             user.cookies_json = json.dumps(cookie_dict)
             user.login_status = "logged_in"
+
+            # Auto-promote first user to admin
+            if user.role != "admin":
+                count = (await session.execute(select(func.count()).select_from(User))).scalar() or 0
+                if count <= 1:
+                    user.role = "admin"
+
             await session.commit()
 
             return {
@@ -81,6 +89,7 @@ async def qr_status(key: str, session: AsyncSession = Depends(get_session)):
                 "message": "登录成功",
                 "nickname": profile.get("nickname"),
                 "avatar_url": profile.get("avatarUrl"),
+                "role": user.role,
             }
 
     return {"code": code, "message": message}
@@ -91,7 +100,7 @@ async def auth_status(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(User).limit(1))
     user = result.scalar()
     if user and user.login_status == "logged_in":
-        return {"logged_in": True, "nickname": user.nickname, "avatar_url": user.avatar_url}
+        return {"logged_in": True, "nickname": user.nickname, "avatar_url": user.avatar_url, "role": user.role}
     return {"logged_in": False}
 
 

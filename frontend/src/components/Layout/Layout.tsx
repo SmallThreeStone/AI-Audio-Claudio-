@@ -3,7 +3,7 @@ import Header from './Header'
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col radio-bg">
+    <div className="min-h-screen flex flex-col radio-bg safe-area-inset">
       <Header />
       {children}
     </div>

@@ -2,7 +2,7 @@ import { useStore } from '../../store'
 import { logout } from '../../api/auth'
 
 export default function Header() {
-  const { user, isPlaying, session, setUser, setShowTranscript, setShowShortcuts } = useStore()
+  const { user, isPlaying, session, setUser, setShowTranscript, setShowShortcuts, setShowAdmin } = useStore()
 
   const handleLogout = async () => {
     await logout()
@@ -10,7 +10,10 @@ export default function Header() {
   }
 
   return (
-    <header className="border-b border-[var(--color-radio-border)] bg-[var(--color-radio-surface)]/80 backdrop-blur-sm sticky top-0 z-50">
+    <header
+      className="border-b border-[var(--color-radio-border)] bg-[var(--color-radio-surface)]/80 backdrop-blur-sm sticky top-0 z-50"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
       <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
@@ -45,6 +48,16 @@ export default function Header() {
               title="查看 DJ 脚本 (T)"
             >
               脚本
+            </button>
+          )}
+
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => setShowAdmin(true)}
+              className="text-xs text-[var(--color-radio-gold)] hover:text-[var(--color-radio-accent)] transition-colors px-1 font-medium"
+              title="管理面板"
+            >
+              管理
             </button>
           )}
 

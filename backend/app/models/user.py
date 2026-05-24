@@ -16,6 +16,7 @@ class User(Base):
     login_status: Mapped[str] = mapped_column(String(20), default="logged_out")
     qr_key: Mapped[str | None] = mapped_column(String(64))
     google_token_json: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(20), default="user")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

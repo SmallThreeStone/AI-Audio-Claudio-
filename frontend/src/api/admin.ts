@@ -1,0 +1,65 @@
+import api from './client'
+
+export interface AdminUser {
+  id: number
+  netease_uid: number | null
+  nickname: string | null
+  avatar_url: string | null
+  login_status: string
+  role: string
+  session_count: number
+  listen_count: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminOverview {
+  total_users: number
+  total_sessions: number
+  total_songs: number
+  total_listens: number
+  active_users: number
+  sessions_today: number
+}
+
+export interface AdminSession {
+  id: number
+  user_id: number | null
+  user_nickname: string
+  user_request: string
+  session_theme: string | null
+  status: string
+  persona: string | null
+  total_items: number
+  played_items: number
+  created_at: string | null
+}
+
+export interface AdminListenEvent {
+  id: number
+  user_nickname: string
+  song_name: string
+  event: string
+  completion_rate: number | null
+  listened_at: string | null
+}
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const { data } = await api.get('/admin/users')
+  return data.users
+}
+
+export async function getAdminOverview(): Promise<AdminOverview> {
+  const { data } = await api.get('/admin/overview')
+  return data
+}
+
+export async function getAdminSessions(): Promise<AdminSession[]> {
+  const { data } = await api.get('/admin/sessions')
+  return data.sessions
+}
+
+export async function getAdminListening(): Promise<AdminListenEvent[]> {
+  const { data } = await api.get('/admin/listening')
+  return data.events
+}
