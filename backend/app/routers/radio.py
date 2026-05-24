@@ -44,6 +44,19 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     if not user:
         raise HTTPException(status_code=401, detail="Not logged in")
 
+    # Stop any currently active session before starting a new one
+    active_result = await session.execute(
+        select(DJSession)
+        .where(DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
+        .order_by(DJSession.created_at.desc())
+        .limit(1)
+    )
+    active = active_result.scalar()
+    if active:
+        active.status = "completed"
+        await session.commit()
+        await ws_manager.broadcast(_session_status_msg(active))
+
     # Check song library
     from sqlalchemy import func
     count_result = await session.execute(select(func.count()).select_from(Song))
