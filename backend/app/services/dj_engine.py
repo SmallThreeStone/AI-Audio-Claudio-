@@ -101,7 +101,7 @@ DJ_PERSONAS = {
 
 async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None) -> dict:
     """Generate a radio script using DeepSeek. Returns parsed JSON."""
-    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
 
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
     songs = await _get_song_candidates(db)
@@ -133,8 +133,12 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 
 请根据听众的心情、天气、日程、当前时间和听歌画像选歌并生成电台脚本。"""
 
-    text = await _call_deepseek(client, p["system_prompt"], user_prompt)
-    return _parse_json_response(text)
+    try:
+        text = await _call_deepseek(client, p["system_prompt"], user_prompt)
+        return _parse_json_response(text)
+    except Exception as e:
+        print(f"[DJ Engine] DeepSeek API failed, using fallback: {e}")
+        return _fallback_script(songs, user_request, persona, weather_info)
 
 
 async def _call_deepseek(client: AsyncOpenAI, system_prompt: str, user_prompt: str, retries: int = 2, max_tokens: int = 4096) -> str:
@@ -185,7 +189,7 @@ def _parse_json_response(text: str) -> dict:
 
 async def generate_continuation(db: AsyncSession, original_request: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
     """Generate continuation songs (auto-refill)."""
-    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
     songs = await _get_song_candidates(db, exclude_ids=recently_played_ids)
@@ -435,3 +439,61 @@ def _current_time_context() -> str:
     else:
         period = "深夜"
     return f"现在是{weekday}{period} {now.hour}:{now.minute:02d}，请根据这个时段调整问候语、选歌风格和整体氛围。"
+
+
+def _fallback_script(songs: list[Song], user_request: str, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
+    """Local rule-based song selection when DeepSeek API is unavailable."""
+    import random as _random
+    _random.seed()
+
+    p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
+    now = datetime.now()
+    h = now.hour
+    if 5 <= h < 8: time_label = "早上"
+    elif 8 <= h < 12: time_label = "上午"
+    elif 12 <= h < 14: time_label = "中午"
+    elif 14 <= h < 18: time_label = "下午"
+    elif 18 <= h < 21: time_label = "傍晚"
+    elif 21 <= h < 23: time_label = "晚上"
+    else: time_label = "深夜"
+
+    # Pick 6 songs with mood tag variety
+    picks: list[Song] = []
+    mood_pool = [s for s in songs if s.mood_tags]
+    no_mood = [s for s in songs if not s.mood_tags]
+    _random.shuffle(mood_pool)
+    _random.shuffle(no_mood)
+    # Take up to 6 from mood-tagged, fill rest from untagged
+    picks = mood_pool[:6]
+    picks.extend(no_mood[:max(0, 6 - len(picks))])
+
+    # Weather-aware greeting
+    weather_hint = ""
+    if weather_info:
+        weather_hint = f" 外面{weather_info.split('。')[0]}。"
+
+    greeting = f"{time_label}好，我是{p['name']}。你说「{user_request}」——我懂你。{weather_hint}来，用音乐陪你。"
+
+    script = [{"type": "tts", "text": greeting}]
+    for i, s in enumerate(picks):
+        script.append({
+            "type": "song",
+            "song_id": s.id,
+            "intro_text": f"接下来这首歌，{s.name}，来自{s.artist}。",
+        })
+        if i < len(picks) - 1:
+            next_s = picks[i + 1]
+            script.append({
+                "type": "tts",
+                "text": f"听完这首，我们来听{next_s.artist}的{next_s.name}。",
+            })
+
+    closing = f"今天的音乐到这里。我是{p['name']}，下次再见。"
+    script.append({"type": "tts", "text": closing})
+
+    return {
+        "session_theme": f"「{user_request}」· 本地精选",
+        "greeting_tts": greeting,
+        "script": script,
+        "closing_tts": closing,
+    }

@@ -96,9 +96,10 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
     await db.commit()
 
     # Resolve song URLs
-    if song_tasks and progress_callback:
-        await progress_callback("fetching_urls", f"正在获取 {len(song_tasks)} 首歌曲的播放链接...")
-    for item_id, song_id in song_tasks:
+    total_songs = len(song_tasks)
+    if total_songs and progress_callback:
+        await progress_callback("fetching_urls", f"加载音乐链接 0/{total_songs}...")
+    for i, (item_id, song_id) in enumerate(song_tasks):
         url = await get_song_url(db, song_id)
         result = await db.execute(select(QueueItem).where(QueueItem.id == item_id))
         qi = result.scalar()
@@ -109,11 +110,13 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
             else:
                 qi.status = "error"
                 qi.error_message = "版权受限或无法获取播放链接"
+        if progress_callback:
+            await progress_callback("fetching_urls", f"加载音乐链接 {i + 1}/{total_songs}...")
     await db.commit()
 
     # Generate TTS in batch
     if tts_tasks and progress_callback:
-        await progress_callback("synthesizing", f"正在合成 {len(tts_tasks)} 段 DJ 语音...")
+        await progress_callback("synthesizing", f"合成 DJ 串词 0/{len(tts_tasks)}...")
     if tts_tasks:
         paths = await generate_tts_batch(tts_tasks, emotion_tags)
         for item_id, audio_path in paths.items():

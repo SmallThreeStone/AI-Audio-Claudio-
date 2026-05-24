@@ -5,22 +5,23 @@ import NowPlaying from './NowPlaying'
 import PlayerControls from './PlayerControls'
 import SleepTimer from './SleepTimer'
 import SpeakerSelector from './SpeakerSelector'
+import UpNext from './UpNext'
 
 const STAGES = [
-  { key: 'analyzing', label: 'AI 感受你的心情' },
-  { key: 'building', label: '挑选歌曲' },
-  { key: 'fetching_urls', label: '准备音乐链接' },
-  { key: 'synthesizing', label: '合成 DJ 语音' },
+  { key: 'analyzing', label: '分析心情' },
+  { key: 'building', label: '精选歌曲' },
+  { key: 'fetching_urls', label: '加载链接' },
+  { key: 'synthesizing', label: '合成语音' },
 ]
 
 export default function RadioPlayer() {
   const { session, isGenerating, currentItem, generationStage, generationMessage } = useStore()
-  const { skip, stop } = useRadioPlayer()
+  const { skip, skipTo, stop } = useRadioPlayer()
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
 
   return (
-    <div className="w-full max-w-md flex flex-col items-center gap-4">
+    <div className="w-full max-w-md flex flex-col items-center gap-3 sm:gap-4">
       <VinylDisc />
 
       {isGenerating && (
@@ -78,6 +79,7 @@ export default function RadioPlayer() {
       )}
 
       <NowPlaying />
+      <UpNext onSkipTo={skipTo} />
       <PlayerControls onSkip={skip} onStop={stop} />
       <SpeakerSelector />
       <SleepTimer />

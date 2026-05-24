@@ -61,7 +61,7 @@ export default function ChatInput() {
         <PersonaSelector />
       </div>
 
-      <div className="flex items-center gap-2 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl px-4 py-3 focus-within:border-[var(--color-radio-accent)] transition-colors">
+      <div className="flex items-center gap-2 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus-within:border-[var(--color-radio-accent)] transition-colors">
         <input
           ref={inputRef}
           type="text"

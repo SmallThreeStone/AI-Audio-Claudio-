@@ -99,13 +99,13 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
         })
 
     try:
-        await _progress("analyzing", "AI 正在感受你的心情...")
+        await _progress("analyzing", "解读心情，构思歌单...")
         script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
         await session.commit()
 
-        await _progress("building", "正在准备播放列表...")
+        await _progress("building", "AI 正在为你精选歌曲...")
         await build_queue_from_script(session, script, dj_session.id, progress_callback=_progress)
 
         await _broadcast_queue(session, dj_session.id)
@@ -170,6 +170,32 @@ async def skip_track(session: AsyncSession = Depends(get_session)):
         active.played_items += 1
         await session.commit()
         await check_refill(session, active.id)
+        await _broadcast_queue(session, active.id)
+
+    return {"status": "ok"}
+
+
+@router.post("/skip-to/{queue_item_id}")
+async def skip_to_track(queue_item_id: int, session: AsyncSession = Depends(get_session)):
+    # Find the target queue item
+    qi_result = await session.execute(
+        select(QueueItem).where(QueueItem.id == queue_item_id)
+    )
+    qi = qi_result.scalar()
+    if not qi:
+        return {"status": "not_found"}
+
+    # Find the active session
+    active_result = await session.execute(
+        select(DJSession)
+        .where(DJSession.status.in_(["ready", "playing"]))
+        .order_by(DJSession.created_at.desc())
+        .limit(1)
+    )
+    active = active_result.scalar()
+    if active:
+        active.played_items = qi.position
+        await session.commit()
         await _broadcast_queue(session, active.id)
 
     return {"status": "ok"}

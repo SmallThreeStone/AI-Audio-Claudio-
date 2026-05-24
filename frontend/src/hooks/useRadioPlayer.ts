@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { Howl } from 'howler'
 import { useStore } from '../store'
 import { radioWS } from '../api/ws'
-import { skipTrack, stopRadio, recordListenEvent } from '../api/radio'
+import { skipTrack, skipToTrack, stopRadio, recordListenEvent } from '../api/radio'
 
 export function useRadioPlayer() {
   const {
@@ -13,6 +13,7 @@ export function useRadioPlayer() {
   const howlRef = useRef<Howl | null>(null)
   const progressRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const currentIdxRef = useRef(currentIndex)
+  const playingSessionRef = useRef<number | null>(null)
 
   useEffect(() => {
     currentIdxRef.current = currentIndex
@@ -34,6 +35,7 @@ export function useRadioPlayer() {
       setCurrentItem(item)
       setCurrentIndex(index)
       currentIdxRef.current = index
+      playingSessionRef.current = useStore.getState().session?.id ?? null
 
       const isTTS = item.item_type.startsWith('tts')
       const src = isTTS ? item.tts_audio_url : `/api/audio/music/${item.song_id}`
@@ -80,6 +82,9 @@ export function useRadioPlayer() {
           setDuration(0)
           if (progressRef.current) clearInterval(progressRef.current)
 
+          // Sync backend playing index (so page-refresh resume works)
+          skipTrack()
+
           const next = currentIdxRef.current + 1
           if (next >= queue.length) {
             radioWS.send({ type: 'refill' })
@@ -111,15 +116,12 @@ export function useRadioPlayer() {
 
   // Listen for queue updates from WebSocket (new session created)
   useEffect(() => {
-    let lastSessionId: number | null = null
-
     const unsub = radioWS.on('queue_update', (msg) => {
       const items = msg.items as Array<Record<string, unknown>>
       const newSessionId = (msg.session as Record<string, unknown>)?.id as number | undefined
-
-      // Only reset player for a brand-new session, not for skip/refill updates
-      if (items && items.length > 0 && newSessionId !== undefined && newSessionId !== lastSessionId) {
-        lastSessionId = newSessionId
+      // Reset player only when a genuinely new session arrives (not skip/refill/hydrate)
+      if (items && items.length > 0 && newSessionId !== undefined && newSessionId !== playingSessionRef.current) {
+        playingSessionRef.current = newSessionId
         if (howlRef.current) {
           howlRef.current.unload()
           howlRef.current = null
@@ -127,6 +129,12 @@ export function useRadioPlayer() {
         if (progressRef.current) {
           clearInterval(progressRef.current)
         }
+        // Auto-play won't fire (queue already set by useWebSocket's handler)
+        // so manually start the new queue
+        setTimeout(() => {
+          const idx = useStore.getState().currentIndex
+          playItem(idx < items.length ? idx : 0)
+        }, 0)
       }
     })
     return unsub
@@ -163,6 +171,34 @@ export function useRadioPlayer() {
     }
   }, [queue, playItem])
 
+  const skipTo = useCallback(
+    (queueItemId: number) => {
+      const store = useStore.getState()
+      const idx = store.queue.findIndex((item) => item.id === queueItemId)
+      if (idx < 0 || idx === store.currentIndex) return
+
+      // Track skip for current item
+      if (howlRef.current && store.currentItem && store.currentItem.item_type === 'song') {
+        recordListenEvent(store.currentItem.id, 'skipped', store.currentTime)
+      }
+
+      if (howlRef.current) {
+        howlRef.current.stop()
+        howlRef.current.unload()
+        howlRef.current = null
+      }
+      if (progressRef.current) {
+        clearInterval(progressRef.current)
+      }
+
+      skipToTrack(queueItemId)
+      currentIdxRef.current = idx
+      setCurrentIndex(idx)
+      setTimeout(() => playItem(idx), 0)
+    },
+    [queue, playItem],
+  )
+
   const stop = useCallback(() => {
     if (howlRef.current) {
       howlRef.current.stop()
@@ -182,5 +218,5 @@ export function useRadioPlayer() {
     stopRadio()
   }, [setIsPlaying, setCurrentTime, setCurrentItem, setCurrentIndex, setQueue, setSession])
 
-  return { skip, stop }
+  return { skip, skipTo, stop }
 }

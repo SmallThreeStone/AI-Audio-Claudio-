@@ -83,7 +83,7 @@ function MainApp() {
                 <MusicProfilePanel />
               </div>
             </aside>
-            <main className="flex-1 flex flex-col items-center gap-4 sm:gap-6 py-4 sm:py-6 min-w-0">
+            <main className="flex-1 flex flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0">
               <RadioPlayer />
               <ChatInput />
               <QueuePanel />
