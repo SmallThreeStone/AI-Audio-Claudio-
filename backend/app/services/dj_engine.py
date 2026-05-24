@@ -270,7 +270,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
             func.count().label("plays"),
             func.avg(ListeningHistory.completion_rate).label("avg_completion"),
         )
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event.in_(["started", "completed", "skipped"]))
         .group_by(ListeningHistory.song_id)
         .order_by(func.count().desc())
@@ -285,7 +285,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
             func.count().label("total"),
             func.sum(case((ListeningHistory.event == "completed", 1), else_=0)).label("completed"),
         )
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event.in_(["started", "completed"]))
         .group_by(Song.artist)
         .having(func.count() >= 3)
@@ -301,7 +301,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
             func.count().label("total"),
             func.sum(case((ListeningHistory.event == "skipped", 1), else_=0)).label("skipped"),
         )
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event.in_(["started", "skipped"]))
         .group_by(Song.artist)
         .having(func.count() >= 3)
@@ -313,7 +313,7 @@ async def _build_behavioral_profile(db: AsyncSession) -> str:
     # Recently played songs (last 10, by started event)
     recent_result = await db.execute(
         select(Song.name, Song.artist)
-        .join(Song, ListeningHistory.song_id == Song.id)
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
         .where(ListeningHistory.event == "started")
         .order_by(ListeningHistory.listened_at.desc())
         .limit(10)

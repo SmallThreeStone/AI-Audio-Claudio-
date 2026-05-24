@@ -398,7 +398,7 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     if total_listens > 0:
         recent_result = await session.execute(
             select(ListeningHistory, Song.name, Song.artist, Song.cover_url)
-            .join(Song, ListeningHistory.song_id == Song.id)
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
             .where(ListeningHistory.event == "started")
             .order_by(ListeningHistory.listened_at.desc())
             .limit(20)
@@ -428,7 +428,7 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
                     case((ListeningHistory.event == "completed", 1), else_=0)
                 ).label("completed"),
             )
-            .join(Song, ListeningHistory.song_id == Song.id)
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
             .where(ListeningHistory.event.in_(["started", "completed"]))
             .group_by(Song.artist)
             .having(func.count() >= 3)
@@ -450,7 +450,7 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
                     case((ListeningHistory.event == "skipped", 1), else_=0)
                 ).label("skipped"),
             )
-            .join(Song, ListeningHistory.song_id == Song.id)
+            .join(ListeningHistory, ListeningHistory.song_id == Song.id)
             .where(ListeningHistory.event.in_(["started", "skipped"]))
             .group_by(Song.artist)
             .having(func.count() >= 3)
