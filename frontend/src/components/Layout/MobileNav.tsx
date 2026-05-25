@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useRef, useCallback, type ReactNode } from 'react'
 
 export type MobileTab = 'radio' | 'playlists' | 'profile'
 
@@ -37,11 +37,38 @@ const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
   },
 ]
 
+const TAB_ORDER: MobileTab[] = ['radio', 'playlists', 'profile']
+
 export default function MobileNav({ active, onChange }: Props) {
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }, [])
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    const dy = e.changedTouches[0].clientY - touchStartY.current
+
+    // Only react to horizontal swipes (> 50px, horizontal > vertical)
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return
+
+    const currentIdx = TAB_ORDER.indexOf(active)
+    if (dx > 0 && currentIdx > 0) {
+      onChange(TAB_ORDER[currentIdx - 1])
+    } else if (dx < 0 && currentIdx < TAB_ORDER.length - 1) {
+      onChange(TAB_ORDER[currentIdx + 1])
+    }
+  }, [active, onChange])
+
   return (
     <nav
       className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--color-radio-surface)]/95 backdrop-blur-md border-t border-[var(--color-radio-border)]"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
       <div className="flex items-center justify-around h-14">
         {TABS.map((tab) => {

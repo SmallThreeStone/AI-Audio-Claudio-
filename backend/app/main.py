@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import select
 
 from .database import init_db, async_session
@@ -18,10 +19,30 @@ from .utils.cookie_store import load_cookies
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory rate limiter (IP -> timestamps)
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+# Rate limit constants
 _RATE_LIMIT_MAX = 5  # max requests per window
 _RATE_LIMIT_WINDOW = 60  # seconds
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+# Rate limiter middleware (always active, not gated by FRONTEND_DIR)
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple IP-based rate limiter for radio request endpoint."""
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/api/radio/request":
+            client_ip = request.client.host if request.client else "unknown"
+            now = time.time()
+            window_start = now - _RATE_LIMIT_WINDOW
+            timestamps = [t for t in _rate_limit_store[client_ip] if t > window_start]
+            _rate_limit_store[client_ip] = timestamps
+            if len(timestamps) >= _RATE_LIMIT_MAX:
+                # retry_after = seconds until the oldest request expires
+                retry = int(timestamps[0] + _RATE_LIMIT_WINDOW - now)
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "请求过于频繁，请稍后再试", "retry_after": max(retry, 1)},
+                )
+            _rate_limit_store[client_ip].append(now)
+        return await call_next(request)
 
 
 async def restore_session():
@@ -75,7 +96,7 @@ async def lifespan(app: FastAPI):
     await sidecar.stop()
 
 
-app = FastAPI(title="AI Radio - Claudio FM", version="3.0.0", lifespan=lifespan)
+app = FastAPI(title="AI Radio - Claudio FM", version="3.1.0", lifespan=lifespan)
 
 # CORS: allow all origins in dev; configure CORS_ORIGINS env var for production
 _allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -97,32 +118,15 @@ app.include_router(dlna.router)
 app.include_router(calendar.router)
 app.include_router(admin.router)
 
+# Rate limiter (always active, not gated by production mode)
+app.add_middleware(RateLimitMiddleware)
+
 # Serve frontend static files in production (SPA fallback via middleware)
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 if os.path.isdir(FRONTEND_DIR):
-    from starlette.responses import FileResponse, Response
-    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import FileResponse
 
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
-
-    class RateLimitMiddleware(BaseHTTPMiddleware):
-        """Simple IP-based rate limiter for radio request endpoint."""
-        async def dispatch(self, request: Request, call_next):
-            if request.url.path == "/api/radio/request":
-                client_ip = request.client.host if request.client else "unknown"
-                now = time.time()
-                window_start = now - _RATE_LIMIT_WINDOW
-                timestamps = [t for t in _rate_limit_store[client_ip] if t > window_start]
-                _rate_limit_store[client_ip] = timestamps
-                if len(timestamps) >= _RATE_LIMIT_MAX:
-                    return JSONResponse(
-                        status_code=429,
-                        content={"detail": "请求过于频繁，请稍后再试", "retry_after": int(window_start + _RATE_LIMIT_WINDOW - now)},
-                    )
-                _rate_limit_store[client_ip].append(now)
-            return await call_next(request)
-
-    app.add_middleware(RateLimitMiddleware)
 
     class SPAMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
@@ -141,7 +145,7 @@ if os.path.isdir(FRONTEND_DIR):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": "3.1.0"}
 
 
 @app.get("/api/settings/voices")
@@ -157,3 +161,30 @@ async def list_voices():
             {"id": "zh-CN-XiaochenNeural", "name": "晓辰", "gender": "female", "style": "清脆少女，适合轻快活泼 DJ"},
         ]
     }
+
+
+@app.get("/api/settings/tts-provider")
+async def get_tts_provider():
+    """Get current TTS provider preference."""
+    from .models.user import User
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.login_status == "logged_in"))
+        user = result.scalar()
+        return {"provider": user.tts_provider if user else "edge"}
+
+
+@app.post("/api/settings/tts-provider")
+async def set_tts_provider(data: dict):
+    """Set TTS provider preference. Body: {"provider": "edge" | "fish"}"""
+    provider = data.get("provider", "edge")
+    if provider not in ("edge", "fish"):
+        return JSONResponse(status_code=400, content={"detail": "provider must be 'edge' or 'fish'"})
+    from .models.user import User
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.login_status == "logged_in"))
+        user = result.scalar()
+        if not user:
+            return JSONResponse(status_code=400, content={"detail": "No logged-in user"})
+        user.tts_provider = provider
+        await session.commit()
+        return {"provider": provider}

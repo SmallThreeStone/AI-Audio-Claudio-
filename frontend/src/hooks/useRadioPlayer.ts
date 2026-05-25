@@ -17,6 +17,7 @@ export function useRadioPlayer() {
   const playingSessionRef = useRef<number | null>(null)
   const autoPlayedRef = useRef(false)
   const isSkippingRef = useRef(false)
+  const queueIdxBeforeHistory = useRef(0)  // saved queue position when switching to history mode
 
   useEffect(() => {
     currentIdxRef.current = currentIndex
@@ -192,7 +193,9 @@ export function useRadioPlayer() {
     radioWS.send({ type: 'command', action: 'skip' })
     skipTrack()
 
-    const next = currentIdxRef.current + 1
+    // If in history mode (previous() was used), resume from saved queue position
+    const baseIdx = currentIdxRef.current === -1 ? queueIdxBeforeHistory.current : currentIdxRef.current
+    const next = baseIdx + 1
     if (next < queue.length) {
       playItem(next)
     }
@@ -229,10 +232,18 @@ export function useRadioPlayer() {
   )
 
   const previous = useCallback(() => {
+    if (isSkippingRef.current) return
+    isSkippingRef.current = true
+
     const store = useStore.getState()
-    // Find the last song in play history
     const lastSong = store.playHistory.find((item) => item.item_type === 'song')
-    if (!lastSong || !lastSong.song_id) return
+    if (!lastSong || !lastSong.song_id) {
+      isSkippingRef.current = false
+      return
+    }
+
+    // Save current queue position before entering history mode
+    queueIdxBeforeHistory.current = currentIdxRef.current
 
     // Stop current playback
     if (howlRef.current) {
@@ -246,7 +257,11 @@ export function useRadioPlayer() {
     setIsPlaying(false)
     setCurrentTime(0)
 
-    // Play the previous song directly (not from queue)
+    // Mark history mode: -1 means playing outside the queue
+    currentIdxRef.current = -1
+    setCurrentIndex(-1)
+    playingSessionRef.current = store.session?.id ?? null
+
     const src = `/api/audio/music/${lastSong.song_id}`
     const howl = new Howl({
       src: [src],
@@ -257,23 +272,33 @@ export function useRadioPlayer() {
         setIsPlaying(true)
         const dur = howl.duration()
         setDuration(dur)
+        recordListenEvent(lastSong.id, 'started')
         progressRef.current = setInterval(() => {
           const seek = howl.seek() as number
           setCurrentTime(seek)
+          radioWS.send({ type: 'progress_report', queue_item_id: lastSong.id, position_seconds: seek })
         }, 1000)
       },
       onend: () => {
         setIsPlaying(false)
         if (progressRef.current) clearInterval(progressRef.current)
+        recordListenEvent(lastSong.id, 'completed')
+        // Restore queue position so next skip plays the correct item
+        currentIdxRef.current = queueIdxBeforeHistory.current
+        setCurrentIndex(queueIdxBeforeHistory.current)
       },
       onloaderror: () => {
         store.setNotice('无法播放此歌曲')
         setIsPlaying(false)
+        currentIdxRef.current = queueIdxBeforeHistory.current
+        setCurrentIndex(queueIdxBeforeHistory.current)
       },
     })
     howlRef.current = howl
     howl.play()
     setCurrentItem(lastSong)
+
+    setTimeout(() => { isSkippingRef.current = false }, 300)
   }, [])
 
   const togglePause = useCallback(() => {

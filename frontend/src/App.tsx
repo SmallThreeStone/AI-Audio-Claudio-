@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useStore } from './store'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import LoginModal from './components/Login/LoginModal'
@@ -23,6 +23,44 @@ function MainApp() {
   const { isLoggedIn, showAdmin, setUser, setShowTranscript, setShowShortcuts, session } = useStore()
   const [checking, setChecking] = useState(true)
   const [mobileTab, setMobileTab] = useState<MobileTab>('radio')
+  const [isPulling, setIsPulling] = useState(false)
+  const [offline, setOffline] = useState(!navigator.onLine)
+  const ptrStartY = useRef(0)
+  const ptrRef = useRef<HTMLDivElement>(null)
+
+  // Offline detection
+  useEffect(() => {
+    const goOffline = () => setOffline(true)
+    const goOnline = () => setOffline(false)
+    window.addEventListener('offline', goOffline)
+    window.addEventListener('online', goOnline)
+    return () => {
+      window.removeEventListener('offline', goOffline)
+      window.removeEventListener('online', goOnline)
+    }
+  }, [])
+
+  // Pull-to-refresh: detect pull-down at top of page
+  const handlePtrStart = useCallback((e: React.TouchEvent) => {
+    if (window.scrollY > 5) return
+    ptrStartY.current = e.touches[0].clientY
+  }, [])
+
+  const handlePtrMove = useCallback((e: React.TouchEvent) => {
+    if (window.scrollY > 5) return
+    const dy = e.touches[0].clientY - ptrStartY.current
+    if (dy > 60) {
+      setIsPulling(true)
+    }
+  }, [])
+
+  const handlePtrEnd = useCallback(() => {
+    if (isPulling) {
+      window.location.reload()
+    }
+    setIsPulling(false)
+    ptrStartY.current = 0
+  }, [isPulling])
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -76,7 +114,7 @@ function MainApp() {
   }
 
   return (
-    <div className="radio-bg min-h-screen">
+    <div className="radio-bg min-h-screen" onTouchStart={handlePtrStart} onTouchMove={handlePtrMove} onTouchEnd={handlePtrEnd}>
       {!isLoggedIn ? (
         <div className="min-h-screen flex items-center justify-center">
           <LoginModal />
@@ -85,6 +123,12 @@ function MainApp() {
         <AdminDashboard />
       ) : (
         <Layout>
+          {offline && (
+            <div className="bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-400 text-xs text-center py-1.5 px-3">
+              当前处于离线模式，部分功能不可用
+            </div>
+          )}
+
           <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full pb-16 lg:pb-0">
             {/* Desktop sidebar — unchanged */}
             <aside className="w-72 flex-shrink-0 hidden lg:block">
@@ -122,6 +166,20 @@ function MainApp() {
       <SettingsPanel />
       <InstallPrompt />
       <MobileNav active={mobileTab} onChange={setMobileTab} />
+
+      {/* Landscape overlay — prompts user to rotate on short screens */}
+      <div className="landscape-overlay">
+        <svg className="w-12 h-12 text-[var(--color-radio-accent)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        <p className="text-sm text-[var(--color-radio-text)] font-medium">请旋转手机</p>
+        <p className="text-xs text-[var(--color-radio-muted)]">竖屏模式下体验更佳</p>
+      </div>
+
+      {/* Pull-to-refresh indicator */}
+      <div ref={ptrRef} className={`ptr-indicator ${isPulling ? 'active' : ''}`}>
+        <div className="ptr-spinner" />
+      </div>
     </div>
   )
 }

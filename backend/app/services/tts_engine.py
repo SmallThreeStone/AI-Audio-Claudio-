@@ -103,27 +103,28 @@ class FishAudioProvider(BaseTTSProvider):
         return f"/api/audio/tts/{file_id}.mp3"
 
 
-def _get_provider() -> BaseTTSProvider:
-    if TTS_PROVIDER == "fish":
+def _get_provider(provider_name: str | None = None) -> BaseTTSProvider:
+    name = provider_name or TTS_PROVIDER
+    if name == "fish":
         return FishAudioProvider()
     return EdgeTTSProvider()
 
 
-async def generate_tts(text: str, file_id: int, emotion_tags: str = "") -> str:
+async def generate_tts(text: str, file_id: int, emotion_tags: str = "", provider: str | None = None) -> str:
     """Generate TTS MP3. Returns relative path to audio."""
-    provider = _get_provider()
+    tts = _get_provider(provider)
     try:
-        return await provider.generate(text, file_id, emotion_tags)
+        return await tts.generate(text, file_id, emotion_tags)
     finally:
-        if isinstance(provider, FishAudioProvider):
-            await provider.close()
+        if isinstance(tts, FishAudioProvider):
+            await tts.close()
 
 
-async def generate_tts_batch(items: list[tuple[int, str]], emotion_tags: str = "") -> dict[int, str]:
+async def generate_tts_batch(items: list[tuple[int, str]], emotion_tags: str = "", provider: str | None = None) -> dict[int, str]:
     """Generate TTS for multiple items in parallel (max 3 at a time)."""
-    provider = _get_provider()
+    tts = _get_provider(provider)
     try:
-        return await provider.generate_batch(items, emotion_tags)
+        return await tts.generate_batch(items, emotion_tags)
     finally:
-        if isinstance(provider, FishAudioProvider):
-            await provider.close()
+        if isinstance(tts, FishAudioProvider):
+            await tts.close()

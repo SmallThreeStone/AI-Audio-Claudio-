@@ -51,6 +51,20 @@ export async function getVoices() {
   return data.voices as TTSVoice[]
 }
 
+export async function getTtsProvider() {
+  const { data } = await api.get('/settings/tts-provider')
+  return data.provider as string
+}
+
+export async function setTtsProvider(provider: 'edge' | 'fish') {
+  await api.post('/settings/tts-provider', { provider })
+}
+
+export async function getCalendarStatus() {
+  const { data } = await api.get('/calendar/status')
+  return data as { connected: boolean; last_sync: string | null }
+}
+
 export async function getWeather() {
   const { data } = await api.get('/radio/weather')
   return data as import('../types').WeatherInfo

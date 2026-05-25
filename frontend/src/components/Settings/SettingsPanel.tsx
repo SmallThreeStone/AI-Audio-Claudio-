@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '../../store'
-import { getVoices } from '../../api/radio'
+import { getVoices, getTtsProvider, setTtsProvider, getCalendarStatus } from '../../api/radio'
 
 export default function SettingsPanel() {
   const { showSettings, setShowSettings } = useStore()
@@ -56,18 +56,22 @@ function TTSSection() {
   const { selectedPersona, setSelectedPersona } = useStore()
   const [voices, setVoices] = useState<{ id: string; name: string; gender: string; style: string }[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [provider, setProvider] = useState<'edge' | 'fish'>('edge')
+  const [saving, setSaving] = useState(false)
 
-  const loadVoices = async () => {
-    if (loaded) return
+  useEffect(() => {
+    getVoices().then((data) => { setVoices(data || []); setLoaded(true) }).catch(() => {})
+    getTtsProvider().then((p) => setProvider(p as 'edge' | 'fish')).catch(() => {})
+  }, [])
+
+  const handleProviderChange = useCallback(async (p: 'edge' | 'fish') => {
+    setSaving(true)
     try {
-      const data = await getVoices()
-      setVoices(data || [])
-      setLoaded(true)
+      await setTtsProvider(p)
+      setProvider(p)
     } catch { /* ignore */ }
-  }
-
-  // Load voices on mount
-  if (!loaded) loadVoices()
+    setSaving(false)
+  }, [])
 
   const PERSONAS = [
     { id: 'xiaoyu', name: '小雨', voice: 'zh-CN-XiaoxiaoNeural', desc: '温暖治愈 · 知性陪伴' },
@@ -79,9 +83,35 @@ function TTSSection() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-medium mb-1">TTS 引擎</h3>
-        <p className="text-xs text-[var(--color-radio-muted)] mb-2">
-          当前使用 <strong>Edge TTS</strong>（免费）。Fish Audio 支持情感语音，需购买 API Key 并在 <code className="bg-white/10 px-1 rounded">backend/.env</code> 中设置 <code className="bg-white/10 px-1 rounded">TTS_PROVIDER=fish</code>。
+        <h3 className="text-sm font-medium mb-2">TTS 引擎</h3>
+        <div className="flex items-center gap-3 mb-2">
+          <button
+            onClick={() => handleProviderChange('edge')}
+            disabled={saving}
+            className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
+              provider === 'edge'
+                ? 'border-[var(--color-radio-accent)] bg-[var(--color-radio-accent)]/5 text-[var(--color-radio-text)]'
+                : 'border-[var(--color-radio-border)] text-[var(--color-radio-muted)] hover:border-[var(--color-radio-muted)]'
+            }`}
+          >
+            Edge TTS（免费）
+          </button>
+          <button
+            onClick={() => handleProviderChange('fish')}
+            disabled={saving}
+            className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
+              provider === 'fish'
+                ? 'border-[var(--color-radio-accent)] bg-[var(--color-radio-accent)]/5 text-[var(--color-radio-text)]'
+                : 'border-[var(--color-radio-border)] text-[var(--color-radio-muted)] hover:border-[var(--color-radio-muted)]'
+            }`}
+          >
+            Fish Audio（情感语音）
+          </button>
+        </div>
+        <p className="text-xs text-[var(--color-radio-muted)]">
+          {provider === 'fish'
+            ? 'Fish Audio 支持情感语音标签，需在 backend/.env 中配置 FISH_AUDIO_API_KEY。'
+            : 'Edge TTS 免费使用，发音清晰自然。'}
         </p>
       </div>
 
@@ -100,7 +130,7 @@ function TTSSection() {
             >
               <div className="text-sm font-medium">{p.name}</div>
               <div className="text-xs text-[var(--color-radio-muted)]">
-                {p.desc} · 语音: {voices.find((v) => v.id === p.voice)?.name || p.voice}
+                {p.desc} · 语音: {loaded ? (voices.find((v) => v.id === p.voice)?.name || p.voice) : p.voice}
               </div>
             </button>
           ))}
@@ -111,6 +141,12 @@ function TTSSection() {
 }
 
 function CalendarSection() {
+  const [status, setStatus] = useState<{ connected: boolean; lastSync: string | null } | null>(null)
+
+  useEffect(() => {
+    getCalendarStatus().then((s) => setStatus(s ? { connected: s.connected, lastSync: s.last_sync } : null)).catch(() => {})
+  }, [])
+
   return (
     <div className="space-y-4">
       <div>
@@ -119,6 +155,18 @@ function CalendarSection() {
           连接 Google 日历后，AI DJ 会在问候中提及你即将到来的日程，选歌也会考虑日程氛围。
         </p>
       </div>
+
+      {status?.connected && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-3 flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-green-400" />
+          <span className="text-xs text-green-300">已连接 Google Calendar</span>
+          {status.lastSync && (
+            <span className="text-[10px] text-[var(--color-radio-muted)] ml-auto">
+              最后同步: {new Date(status.lastSync).toLocaleString()}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="bg-[var(--color-radio-card)] rounded-xl p-4 border border-[var(--color-radio-border)]">
         <h4 className="text-xs font-bold text-[var(--color-radio-muted)] uppercase tracking-wider mb-3">配置步骤</h4>
@@ -141,7 +189,7 @@ CALENDAR_ENABLED=true`}</pre>
         rel="noopener"
         className="inline-block px-4 py-2 bg-[var(--color-radio-accent)] text-white text-sm rounded-lg hover:bg-[var(--color-radio-accent-dim)] transition-colors"
       >
-        连接 Google Calendar
+        {status?.connected ? '重新连接 Google Calendar' : '连接 Google Calendar'}
       </a>
     </div>
   )

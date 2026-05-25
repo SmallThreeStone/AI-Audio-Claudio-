@@ -11,6 +11,26 @@ from ..config import CALENDAR_ENABLED
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 
+@router.get("/status")
+async def calendar_status(session: AsyncSession = Depends(get_session)):
+    """Get Google Calendar connection status."""
+    connected = await _is_connected(session)
+    last_sync = None
+    if connected:
+        from sqlalchemy import select
+        from ..models.user import User
+        result = await session.execute(select(User).where(User.login_status == "logged_in"))
+        user = result.scalar()
+        if user and user.google_token_json:
+            import json
+            try:
+                token = json.loads(user.google_token_json)
+                last_sync = token.get("_fetched_at")
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return {"connected": connected, "last_sync": last_sync}
+
+
 @router.get("/auth-url")
 async def calendar_auth_url():
     """Get Google OAuth authorization URL."""

@@ -141,6 +141,7 @@ FISH_AUDIO_API_KEY=your_key
 | V2.8 | 管理后台图表（趋势/时段/用户活跃）、设备隔离播放、天气组件、移动端底部导航、触摸体验优化、进度条点击跳转、暂停/恢复、会话过期自动清理、PWA 安全区适配 |
 | V2.9 | 移动端键盘避让、TTS 失败兜底、歌曲 URL 2h 缓存、管理后台异常告警、Owner 权限增强、Docker 部署、后端 serve 前端静态文件 |
 | V3.0 | Bug 修复（fallback 重复播放/WS 多用户隔离/skip 连点保护/N+1 查询/TTS 缓存）、优化（速率限制/WS 心跳/recharts 按需加载/prompt token 缩减）、上一首 & 播放历史、歌单风格筛选、设置面板（TTS/日历） |
+| V3.1 | 收尾修复（历史模式/skip 混用/retry_after/速率限制卸载）、URL 缓存预刷新、CLAUDE.md 同步、泛化 user_filter、PWA 移动端增强（横屏提示/下拉刷新/滑动切 Tab/离线提示）、Fish Audio 运行时切换、日历连接状态、语音输入 |
 
 ## 📄 License
 

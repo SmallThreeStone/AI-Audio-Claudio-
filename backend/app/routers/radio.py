@@ -486,7 +486,8 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     total_likes = liked_result.scalar() or 0
 
     # ===== Behavioral insights (per-user) =====
-    from ..utils.user_filter import apply_user_filter as _user_filter
+    from ..utils.user_filter import apply_user_filter
+    _user_filter = lambda q: apply_user_filter(q, user_id, ListeningHistory)
 
     # Total listen events
     total_listens_result = await session.execute(

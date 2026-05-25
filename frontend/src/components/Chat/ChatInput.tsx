@@ -3,6 +3,7 @@ import { useStore } from '../../store'
 import { requestRadio, getGreeting } from '../../api/radio'
 import { getClientId } from '../../utils/clientId'
 import PersonaSelector from './PersonaSelector'
+import VoiceInput from './VoiceInput'
 
 const QUICK_PROMPTS = [
   '深夜加班，来点能撑住的',
@@ -92,6 +93,7 @@ export default function ChatInput() {
           disabled={isSubmitting || isGenerating}
           className="flex-1 bg-transparent outline-none text-sm placeholder-[var(--color-radio-muted)] disabled:opacity-50"
         />
+        <VoiceInput onResult={(voiceText) => setText((prev) => prev ? `${prev} ${voiceText}` : voiceText)} />
         <button
           onClick={() => handleSubmit()}
           disabled={isSubmitting || isGenerating || !text.trim()}

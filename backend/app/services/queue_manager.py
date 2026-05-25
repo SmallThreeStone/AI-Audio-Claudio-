@@ -6,6 +6,7 @@ from sqlalchemy import select
 from ..database import async_session as async_session_factory
 from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
+from ..models.user import User
 from ..services.dj_engine import generate_continuation, DJ_PERSONAS
 from ..services.tts_engine import generate_tts_batch
 from ..services.audio_proxy import get_song_url
@@ -23,6 +24,14 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
     voice = p["voice"]
     emotion_tags = p.get("emotion_tags", "")
+
+    # Read user's TTS provider preference
+    tts_provider = None
+    if s and s.user_id:
+        user_result = await db.execute(select(User).where(User.id == s.user_id))
+        user = user_result.scalar()
+        if user:
+            tts_provider = user.tts_provider
 
     position = start_position
     tts_tasks = []
@@ -127,7 +136,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
     async def synthesize_all_tts():
         if not tts_tasks:
             return
-        paths = await generate_tts_batch(tts_tasks, emotion_tags)
+        paths = await generate_tts_batch(tts_tasks, emotion_tags, provider=tts_provider)
         for item_id, audio_path in paths.items():
             result = await db.execute(select(QueueItem).where(QueueItem.id == item_id))
             qi = result.scalar()
