@@ -149,8 +149,7 @@ export function useRadioPlayer() {
         if (progressRef.current) {
           clearInterval(progressRef.current)
         }
-        // Auto-play won't fire (queue already set by useWebSocket's handler)
-        // so manually start the new queue
+        autoPlayedRef.current = true  // prevent auto-play useEffect from double-playing
         setTimeout(() => {
           const idx = useStore.getState().currentIndex
           playItem(idx < items.length ? idx : 0)

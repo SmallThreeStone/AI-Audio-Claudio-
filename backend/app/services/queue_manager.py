@@ -1,6 +1,9 @@
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from ..database import async_session as async_session_factory
 from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
 from ..services.dj_engine import generate_continuation, DJ_PERSONAS
@@ -95,29 +98,38 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
 
     await db.commit()
 
-    # Resolve song URLs
-    total_songs = len(song_tasks)
-    if total_songs and progress_callback:
-        await progress_callback("fetching_urls", f"加载音乐链接 0/{total_songs}...")
-    for i, (item_id, song_id) in enumerate(song_tasks):
-        url = await get_song_url(db, song_id)
-        result = await db.execute(select(QueueItem).where(QueueItem.id == item_id))
-        qi = result.scalar()
-        if qi:
-            if url:
-                qi.stream_url = url
-                qi.status = "ready"
-            else:
-                qi.status = "error"
-                qi.error_message = "版权受限或无法获取播放链接"
-        if progress_callback:
-            await progress_callback("fetching_urls", f"加载音乐链接 {i + 1}/{total_songs}...")
-    await db.commit()
+    sem = asyncio.Semaphore(3)
 
-    # Generate TTS in batch
-    if tts_tasks and progress_callback:
-        await progress_callback("synthesizing", f"合成 DJ 串词 0/{len(tts_tasks)}...")
-    if tts_tasks:
+    async def resolve_one_song(item_id: int, song_id: int):
+        async with sem:
+            async with async_session_factory() as task_db:
+                url = await get_song_url(task_db, song_id)
+                result = await task_db.execute(select(QueueItem).where(QueueItem.id == item_id))
+                qi = result.scalar()
+                if qi:
+                    if url:
+                        qi.stream_url = url
+                        qi.status = "ready"
+                    else:
+                        qi.status = "error"
+                        qi.error_message = "版权受限或无法获取播放链接"
+                await task_db.commit()
+
+    async def resolve_all_songs():
+        if not song_tasks:
+            return
+        if progress_callback:
+            await progress_callback("fetching_urls", f"加载音乐链接 0/{len(song_tasks)}...")
+        tasks = [resolve_one_song(item_id, song_id) for item_id, song_id in song_tasks]
+        await asyncio.gather(*tasks)
+        if progress_callback:
+            await progress_callback("fetching_urls", f"加载音乐链接完成")
+
+    async def synthesize_all_tts():
+        if not tts_tasks:
+            return
+        if progress_callback:
+            await progress_callback("synthesizing", f"合成 DJ 串词 0/{len(tts_tasks)}...")
         paths = await generate_tts_batch(tts_tasks, emotion_tags)
         for item_id, audio_path in paths.items():
             result = await db.execute(select(QueueItem).where(QueueItem.id == item_id))
@@ -125,6 +137,11 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
             if qi:
                 qi.tts_audio_path = audio_path
                 qi.status = "ready"
+        if progress_callback:
+            await progress_callback("synthesizing", f"合成 DJ 串词完成")
+
+    # Fetch song URLs and synthesize TTS in parallel
+    await asyncio.gather(resolve_all_songs(), synthesize_all_tts())
 
     # Update session
     session_result = await db.execute(select(DJSession).where(DJSession.id == session_id))
