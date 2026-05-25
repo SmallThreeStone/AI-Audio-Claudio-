@@ -1,4 +1,5 @@
 import json
+import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from ..models.song import Song
 from ..models.listening_history import ListeningHistory
 from ..services.dj_engine import generate_radio_script, DJ_PERSONAS
 from ..services.queue_manager import build_queue_from_script, check_refill
-from ..services.weather_service import get_weather_summary
+from ..services.weather_service import get_weather_summary, get_weather_structured
 from ..services.greeting_service import build_greeting
 from ..services.calendar_service import get_upcoming_events, build_calendar_summary
 from ..routers.ws import ws_manager
@@ -31,6 +32,7 @@ async def _get_current_user_id(session: AsyncSession) -> int | None:
 class RadioRequest(BaseModel):
     text: str
     persona: str = "xiaoyu"
+    client_id: str = ""
 
 
 class FeedbackRequest(BaseModel):
@@ -115,7 +117,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
         await _progress("building", "AI 正在为你精选歌曲...")
         await build_queue_from_script(session, script, dj_session.id, progress_callback=_progress)
 
-        await _broadcast_queue(session, dj_session.id)
+        await _broadcast_queue(session, dj_session.id, body.client_id)
     except Exception as e:
         print(f"Radio generation error: {e}")
         dj_session.status = "error"
@@ -164,6 +166,12 @@ async def get_queue(session: AsyncSession = Depends(get_session)):
     result = await session.execute(query)
     active = result.scalar()
     if not active:
+        return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
+
+    # Auto-expire sessions from previous days
+    if active.created_at and active.created_at.date() < datetime.date.today():
+        active.status = "completed"
+        await session.commit()
         return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
 
     return await _build_queue_response(session, active)
@@ -242,12 +250,12 @@ async def stop_radio(session: AsyncSession = Depends(get_session)):
     return {"status": "ok"}
 
 
-async def _broadcast_queue(db: AsyncSession, session_id: int):
+async def _broadcast_queue(db: AsyncSession, session_id: int, initiator_client_id: str = ""):
     result = await db.execute(select(DJSession).where(DJSession.id == session_id))
     s = result.scalar()
     if not s:
         return
-    data = await _build_queue_response(db, s)
+    data = await _build_queue_response(db, s, initiator_client_id)
     await ws_manager.broadcast(data)
 
 
@@ -297,13 +305,24 @@ async def list_personas():
     ]
 
 
+@router.get("/weather")
+async def get_weather_info(request: Request):
+    """Get structured weather + location data for header widget."""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    data = await get_weather_structured(client_ip)
+    if not data:
+        return {"available": False}
+    return {"available": True, **data}
+
+
 @router.get("/greeting")
-async def get_greeting(session: AsyncSession = Depends(get_session)):
+async def get_greeting(request: Request, session: AsyncSession = Depends(get_session)):
     """Get a context-aware greeting based on time, weather, and listening history."""
     user_id = await _get_current_user_id(session)
+    client_ip = request.client.host if request.client else "127.0.0.1"
     weather_summary = None
     try:
-        weather_summary = await get_weather_summary("127.0.0.1")  # Will use default/fallback
+        weather_summary = await get_weather_summary(client_ip)
     except Exception:
         pass
     return await build_greeting(session, weather_summary, user_id)
@@ -623,7 +642,7 @@ async def import_netease_history(session: AsyncSession = Depends(get_session)):
     return result
 
 
-async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
+async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client_id: str = "") -> dict:
     items_result = await db.execute(
         select(QueueItem)
         .where(QueueItem.session_id == s.id)
@@ -675,4 +694,5 @@ async def _build_queue_response(db: AsyncSession, s: DJSession) -> dict:
         },
         "items": enriched,
         "playing_index": s.played_items,
+        "initiator_client_id": initiator_client_id,
     }

@@ -121,6 +121,59 @@ async def admin_sessions(
     }
 
 
+@router.get("/trends")
+async def admin_trends(
+    admin_user: User = Depends(verify_admin),
+    session: AsyncSession = Depends(get_session),
+    days: int = 7,
+):
+    end = datetime.date.today()
+    start = end - datetime.timedelta(days=days - 1)
+    dates = [(start + datetime.timedelta(days=i)).isoformat() for i in range(days)]
+
+    sess_rows = (
+        await session.execute(
+            select(func.date(DJSession.created_at), func.count())
+            .where(func.date(DJSession.created_at) >= start.isoformat())
+            .group_by(func.date(DJSession.created_at))
+        )
+    ).all()
+
+    listen_rows = (
+        await session.execute(
+            select(func.date(ListeningHistory.listened_at), func.count())
+            .where(func.date(ListeningHistory.listened_at) >= start.isoformat())
+            .group_by(func.date(ListeningHistory.listened_at))
+        )
+    ).all()
+
+    sess_map = {row[0]: row[1] for row in sess_rows}
+    listen_map = {row[0]: row[1] for row in listen_rows}
+
+    return {
+        "trends": [
+            {"date": d, "sessions": sess_map.get(d, 0), "listens": listen_map.get(d, 0)}
+            for d in dates
+        ]
+    }
+
+
+@router.get("/hourly")
+async def admin_hourly(
+    admin_user: User = Depends(verify_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    rows = (
+        await session.execute(
+            select(func.strftime("%H", ListeningHistory.listened_at), func.count())
+            .group_by(func.strftime("%H", ListeningHistory.listened_at))
+        )
+    ).all()
+
+    count_map = {int(row[0]): row[1] for row in rows}
+    return {"hourly": [{"hour": h, "count": count_map.get(h, 0)} for h in range(24)]}
+
+
 @router.get("/listening")
 async def admin_listening(
     admin_user: User = Depends(verify_admin),

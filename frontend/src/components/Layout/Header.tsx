@@ -1,8 +1,32 @@
+import { useEffect, useState } from 'react'
 import { useStore } from '../../store'
 import { logout } from '../../api/auth'
+import { getWeather } from '../../api/radio'
+import type { WeatherInfo } from '../../types'
+
+const WEATHER_ICON: Record<string, string> = {
+  Clear: '☀️',
+  Clouds: '⛅',
+  Rain: '🌧',
+  Drizzle: '🌦',
+  Thunderstorm: '⛈',
+  Snow: '❄️',
+  Mist: '🌫',
+  Fog: '🌫',
+  Haze: '🌫',
+  Dust: '💨',
+  Sand: '💨',
+  Squall: '🌬',
+  Tornado: '🌪',
+}
 
 export default function Header() {
   const { user, isPlaying, session, setUser, setShowTranscript, setShowShortcuts, setShowAdmin } = useStore()
+  const [weather, setWeather] = useState<WeatherInfo | null>(null)
+
+  useEffect(() => {
+    getWeather().then(setWeather).catch(() => {})
+  }, [])
 
   const handleLogout = async () => {
     await logout()
@@ -36,6 +60,16 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-3">
+          {weather?.available && (
+            <div className="flex items-center gap-1 text-xs text-[var(--color-radio-muted)]" title={weather.summary}>
+              <span>{WEATHER_ICON[weather.condition_code || ''] || '🌡'}</span>
+              <span className="hidden sm:inline">{weather.city}</span>
+              {weather.temperature != null && (
+                <span>{weather.temperature}°</span>
+              )}
+            </div>
+          )}
+
           <div className="hidden sm:flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400" />
             <span className="text-sm text-[var(--color-radio-muted)]">ON AIR</span>

@@ -1,8 +1,8 @@
 import api from './client'
 import type { DJSession, DJPersona, MusicProfile, TTSVoice, DlnaDevice } from '../types'
 
-export async function requestRadio(text: string, persona: string = 'xiaoyu') {
-  const { data } = await api.post('/radio/request', { text, persona })
+export async function requestRadio(text: string, persona: string = 'xiaoyu', clientId: string = '') {
+  const { data } = await api.post('/radio/request', { text, persona, client_id: clientId })
   return data as { session_id: number; message: string }
 }
 
@@ -49,6 +49,11 @@ export async function stopRadio() {
 export async function getVoices() {
   const { data } = await api.get('/settings/voices')
   return data.voices as TTSVoice[]
+}
+
+export async function getWeather() {
+  const { data } = await api.get('/radio/weather')
+  return data as import('../types').WeatherInfo
 }
 
 export async function getGreeting() {

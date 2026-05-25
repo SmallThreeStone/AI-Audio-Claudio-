@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store'
 import { requestRadio, getGreeting } from '../../api/radio'
+import { getClientId } from '../../utils/clientId'
 import PersonaSelector from './PersonaSelector'
 
 const QUICK_PROMPTS = [
@@ -37,7 +38,7 @@ export default function ChatInput() {
     setText('')
 
     try {
-      await requestRadio(trimmed, selectedPersona)
+      await requestRadio(trimmed, selectedPersona, getClientId())
     } catch (e) {
       console.error('Failed to request radio:', e)
       setIsGenerating(false)

@@ -119,3 +119,32 @@ async def get_weather_summary(client_ip: str) -> str | None:
         return None
 
     return build_weather_summary(location["city"], weather)
+
+
+async def get_weather_structured(client_ip: str) -> dict | None:
+    """Orchestrate IP geolocation + weather fetch + structured data. Returns structured fields + summary."""
+    if not WEATHER_ENABLED:
+        return None
+
+    location = await locate_by_ip(client_ip)
+    if not location or not location.get("city"):
+        return None
+
+    weather = await fetch_weather(location["lat"], location["lon"])
+    if not weather:
+        return None
+
+    weather_list = weather.get("weather", [{}])
+    main_weather = weather_list[0] if weather_list else {}
+    main_data = weather.get("main", {})
+
+    return {
+        "city": location["city"],
+        "country": location.get("country", ""),
+        "temperature": round(main_data["temp"]) if main_data.get("temp") is not None else None,
+        "feels_like": round(main_data["feels_like"]) if main_data.get("feels_like") is not None else None,
+        "humidity": main_data.get("humidity"),
+        "condition": main_weather.get("description", ""),
+        "condition_code": main_weather.get("main", ""),
+        "summary": build_weather_summary(location["city"], weather),
+    }

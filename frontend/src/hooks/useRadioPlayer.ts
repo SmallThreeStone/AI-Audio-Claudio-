@@ -3,6 +3,7 @@ import { Howl } from 'howler'
 import { useStore } from '../store'
 import { radioWS } from '../api/ws'
 import { skipTrack, skipToTrack, stopRadio, recordListenEvent } from '../api/radio'
+import { getClientId } from '../utils/clientId'
 
 export function useRadioPlayer() {
   const {
@@ -14,6 +15,7 @@ export function useRadioPlayer() {
   const progressRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const currentIdxRef = useRef(currentIndex)
   const playingSessionRef = useRef<number | null>(null)
+  const autoPlayedRef = useRef(false)
 
   useEffect(() => {
     currentIdxRef.current = currentIndex
@@ -107,21 +109,39 @@ export function useRadioPlayer() {
     [queue.length],
   )
 
-  // Auto-play when queue updates
+  // Auto-play when queue updates (page refresh / new session)
   useEffect(() => {
-    if (queue.length > 0 && !howlRef.current) {
-      playItem(currentIndex)
+    if (queue.length > 0 && !howlRef.current && !autoPlayedRef.current) {
+      autoPlayedRef.current = true
+      // Use timeout to ensure all batched state updates (queue, currentIndex) have flushed
+      const timer = setTimeout(() => {
+        const idx = useStore.getState().currentIndex
+        playItem(idx < queue.length ? idx : 0)
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+    if (queue.length === 0) {
+      autoPlayedRef.current = false
     }
   }, [queue])
 
   // Listen for queue updates from WebSocket (new session created)
   useEffect(() => {
+    const myId = getClientId()
     const unsub = radioWS.on('queue_update', (msg) => {
       const items = msg.items as Array<Record<string, unknown>>
       const newSessionId = (msg.session as Record<string, unknown>)?.id as number | undefined
+      const initiatorId = (msg.initiator_client_id as string) || ''
       // Reset player only when a genuinely new session arrives (not skip/refill/hydrate)
       if (items && items.length > 0 && newSessionId !== undefined && newSessionId !== playingSessionRef.current) {
         playingSessionRef.current = newSessionId
+        // Only auto-play if this client initiated the request
+        const isMyRequest = !initiatorId || initiatorId === myId
+        if (!isMyRequest) {
+          console.log('[Radio] Session', newSessionId, 'initiated by another device, skipping auto-play')
+          autoPlayedRef.current = true  // prevent auto-play effect from re-triggering
+          return
+        }
         if (howlRef.current) {
           howlRef.current.unload()
           howlRef.current = null

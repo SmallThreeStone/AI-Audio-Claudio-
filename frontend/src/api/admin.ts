@@ -63,3 +63,24 @@ export async function getAdminListening(): Promise<AdminListenEvent[]> {
   const { data } = await api.get('/admin/listening')
   return data.events
 }
+
+export interface AdminTrend {
+  date: string
+  sessions: number
+  listens: number
+}
+
+export interface AdminHourly {
+  hour: number
+  count: number
+}
+
+export async function getAdminTrends(days = 7): Promise<AdminTrend[]> {
+  const { data } = await api.get('/admin/trends', { params: { days } })
+  return data.trends
+}
+
+export async function getAdminHourly(): Promise<AdminHourly[]> {
+  const { data } = await api.get('/admin/hourly')
+  return data.hourly
+}

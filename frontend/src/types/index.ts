@@ -93,6 +93,18 @@ export interface MusicProfile {
   time_patterns: { morning: number; afternoon: number; evening: number; night: number }
 }
 
+export interface WeatherInfo {
+  available: boolean
+  city?: string
+  country?: string
+  temperature?: number
+  feels_like?: number
+  humidity?: number
+  condition?: string
+  condition_code?: string
+  summary?: string
+}
+
 export interface DlnaDevice {
   udn: string
   name: string
