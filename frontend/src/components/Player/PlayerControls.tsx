@@ -2,13 +2,14 @@ import { useStore } from '../../store'
 
 interface Props {
   onSkip: () => void
+  onPrevious: () => void
   onStop: () => void
   onTogglePause: () => void
   onSeek: (time: number) => void
 }
 
-export default function PlayerControls({ onSkip, onStop, onTogglePause, onSeek }: Props) {
-  const { currentTime, duration, volume, isPlaying, session, setVolume, queue } = useStore()
+export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePause, onSeek }: Props) {
+  const { currentTime, duration, volume, isPlaying, session, setVolume, queue, playHistory } = useStore()
 
   const hasPlayableItems = queue.some(
     (item) => item.status !== 'error' && item.status !== 'skipped'
@@ -52,20 +53,31 @@ export default function PlayerControls({ onSkip, onStop, onTogglePause, onSeek }
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex items-center justify-center gap-3 sm:gap-4">
         <button
           onClick={onStop}
-          className="w-10 h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors"
           title="停止"
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
             <rect x="6" y="6" width="12" height="12" rx="1" />
           </svg>
         </button>
 
         <button
+          onClick={onPrevious}
+          disabled={playHistory.length === 0}
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors disabled:opacity-30"
+          title="上一首"
+        >
+          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+          </svg>
+        </button>
+
+        <button
           onClick={onTogglePause}
-          className="w-12 h-12 rounded-full bg-[var(--color-radio-accent)] flex items-center justify-center hover:bg-[var(--color-radio-accent-dim)] transition-colors"
+          className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--color-radio-accent)] flex items-center justify-center hover:bg-[var(--color-radio-accent-dim)] transition-colors"
           title={isPlaying ? '暂停' : '播放'}
         >
           {isPlaying ? (
@@ -82,10 +94,10 @@ export default function PlayerControls({ onSkip, onStop, onTogglePause, onSeek }
 
         <button
           onClick={onSkip}
-          className="w-10 h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors"
           title="下一首"
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
         </button>

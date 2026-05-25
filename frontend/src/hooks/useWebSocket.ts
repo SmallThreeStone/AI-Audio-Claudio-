@@ -70,7 +70,7 @@ export function useWebSocket() {
     })
 
     const unsub4 = radioWS.on('error', (msg) => {
-      console.warn('[WS] Error:', msg.message)
+      if (import.meta.env.DEV) console.warn('[WS] Error:', msg.message)
     })
 
     const unsub5 = radioWS.on('generation_progress', (msg) => {

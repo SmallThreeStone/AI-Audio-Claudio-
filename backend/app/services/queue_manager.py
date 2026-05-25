@@ -9,6 +9,7 @@ from ..models.queue_item import QueueItem
 from ..services.dj_engine import generate_continuation, DJ_PERSONAS
 from ..services.tts_engine import generate_tts_batch
 from ..services.audio_proxy import get_song_url
+from ..utils.broadcast import ws_manager
 
 
 async def build_queue_from_script(db: AsyncSession, script: dict, session_id: int, start_position: int = 0, progress_callback=None):
@@ -178,16 +179,15 @@ async def check_refill(db: AsyncSession, session_id: int) -> bool:
         script = await generate_continuation(db, session.user_request, recent_ids, count=5, persona=session.persona or "xiaoyu")
         await build_queue_from_script(db, script, session_id, start_position=session.total_items)
 
-        # Broadcast updated queue (lazy import to avoid circular dependency)
-        from ..routers.radio import _broadcast_queue  # noqa: F811
+        # Broadcast updated queue
+        from ..routers.radio import _broadcast_queue
         await _broadcast_queue(db, session_id)
         return True
     except Exception as e:
         print(f"Refill error: {e}")
         session.status = "ready"
         await db.commit()
-        from ..routers.ws import ws_manager
-        await ws_manager.broadcast({
+        await ws_manager.broadcast_to_user(session.user_id or 0, {
             "type": "error",
             "message": f"续杯失败: {str(e)}",
         })

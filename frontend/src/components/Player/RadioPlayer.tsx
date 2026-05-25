@@ -6,6 +6,7 @@ import PlayerControls from './PlayerControls'
 import SleepTimer from './SleepTimer'
 import SpeakerSelector from './SpeakerSelector'
 import UpNext from './UpNext'
+import PlayHistory from './PlayHistory'
 import { useEffect } from 'react'
 
 const STAGES = [
@@ -16,7 +17,7 @@ const STAGES = [
 
 export default function RadioPlayer() {
   const { session, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
-  const { skip, skipTo, stop, togglePause, seek } = useRadioPlayer()
+  const { skip, skipTo, stop, togglePause, seek, previous } = useRadioPlayer()
 
   // Auto-clear notice after 3 seconds
   useEffect(() => {
@@ -93,7 +94,8 @@ export default function RadioPlayer() {
 
       <NowPlaying />
       <UpNext onSkipTo={skipTo} />
-      <PlayerControls onSkip={skip} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
+      <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
+      <PlayHistory />
       <SpeakerSelector />
       <SleepTimer />
     </div>

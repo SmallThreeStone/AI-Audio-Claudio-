@@ -16,6 +16,7 @@ export function useRadioPlayer() {
   const currentIdxRef = useRef(currentIndex)
   const playingSessionRef = useRef<number | null>(null)
   const autoPlayedRef = useRef(false)
+  const isSkippingRef = useRef(false)
 
   useEffect(() => {
     currentIdxRef.current = currentIndex
@@ -67,6 +68,7 @@ export function useRadioPlayer() {
           // Track listening: song started
           if (!isTTS) {
             recordListenEvent(item.id, 'started')
+            useStore.getState().addToHistory(item)
           }
 
           progressRef.current = setInterval(() => {
@@ -141,7 +143,7 @@ export function useRadioPlayer() {
         // Only auto-play if this client initiated the request
         const isMyRequest = !initiatorId || initiatorId === myId
         if (!isMyRequest) {
-          console.log('[Radio] Session', newSessionId, 'initiated by another device, skipping auto-play')
+          if (import.meta.env.DEV) console.log('[Radio] Session', newSessionId, 'initiated by another device, skipping auto-play')
           autoPlayedRef.current = true  // prevent auto-play effect from re-triggering
           return
         }
@@ -170,6 +172,9 @@ export function useRadioPlayer() {
   }, [volume])
 
   const skip = useCallback(() => {
+    if (isSkippingRef.current) return
+    isSkippingRef.current = true
+
     // Track listening: song skipped at current position
     const store = useStore.getState()
     if (howlRef.current && store.currentItem && store.currentItem.item_type === 'song') {
@@ -191,6 +196,8 @@ export function useRadioPlayer() {
     if (next < queue.length) {
       playItem(next)
     }
+    // Reset guard after playItem has had time to start
+    setTimeout(() => { isSkippingRef.current = false }, 300)
   }, [queue, playItem])
 
   const skipTo = useCallback(
@@ -220,6 +227,54 @@ export function useRadioPlayer() {
     },
     [queue, playItem],
   )
+
+  const previous = useCallback(() => {
+    const store = useStore.getState()
+    // Find the last song in play history
+    const lastSong = store.playHistory.find((item) => item.item_type === 'song')
+    if (!lastSong || !lastSong.song_id) return
+
+    // Stop current playback
+    if (howlRef.current) {
+      howlRef.current.stop()
+      howlRef.current.unload()
+      howlRef.current = null
+    }
+    if (progressRef.current) {
+      clearInterval(progressRef.current)
+    }
+    setIsPlaying(false)
+    setCurrentTime(0)
+
+    // Play the previous song directly (not from queue)
+    const src = `/api/audio/music/${lastSong.song_id}`
+    const howl = new Howl({
+      src: [src],
+      html5: true,
+      volume: store.volume,
+      format: ['mp3'],
+      onplay: () => {
+        setIsPlaying(true)
+        const dur = howl.duration()
+        setDuration(dur)
+        progressRef.current = setInterval(() => {
+          const seek = howl.seek() as number
+          setCurrentTime(seek)
+        }, 1000)
+      },
+      onend: () => {
+        setIsPlaying(false)
+        if (progressRef.current) clearInterval(progressRef.current)
+      },
+      onloaderror: () => {
+        store.setNotice('无法播放此歌曲')
+        setIsPlaying(false)
+      },
+    })
+    howlRef.current = howl
+    howl.play()
+    setCurrentItem(lastSong)
+  }, [])
 
   const togglePause = useCallback(() => {
     if (!howlRef.current) return
@@ -259,5 +314,5 @@ export function useRadioPlayer() {
     }
   }, [setCurrentTime])
 
-  return { skip, skipTo, stop, togglePause, seek }
+  return { skip, skipTo, stop, togglePause, seek, previous }
 }

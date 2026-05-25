@@ -10,11 +10,14 @@ from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
 from ..models.listening_history import ListeningHistory
 from ..models.song import Song
+from ..utils.broadcast import ws_manager
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 async def verify_admin(session: AsyncSession = Depends(get_session)) -> User:
+    # NOTE: Uses first logged-in user (single-user assumption).
+    # Multi-user would need session tokens / request-scoped user identity.
     result = await session.execute(select(User).where(User.login_status == "logged_in"))
     user = result.scalar()
     if not user or user.role not in ("admin", "owner"):
@@ -23,6 +26,7 @@ async def verify_admin(session: AsyncSession = Depends(get_session)) -> User:
 
 
 async def verify_owner(session: AsyncSession = Depends(get_session)) -> User:
+    # NOTE: Same single-user assumption as verify_admin.
     result = await session.execute(select(User).where(User.login_status == "logged_in"))
     user = result.scalar()
     if not user or user.role != "owner":
@@ -267,7 +271,7 @@ async def admin_anomalies(
                 "suggestion": "可能网易云 Cookie 已过期，请重新扫码登录",
             })
 
-    # 2. High skip rate sessions (last 24h)
+    # 2. Recent sessions for skip-rate and short-session analysis
     recent_sessions = (
         await session.execute(
             select(DJSession)
@@ -277,27 +281,44 @@ async def admin_anomalies(
         )
     ).scalars().all()
 
+    if not recent_sessions:
+        return {"alerts": alerts, "total": len(alerts)}
+
+    # Batch fetch all listening history stats for recent sessions
+    session_ids = [s.id for s in recent_sessions]
+    lh_stats_stmt = (
+        select(
+            ListeningHistory.session_id,
+            ListeningHistory.event,
+            func.count().label("cnt"),
+        )
+        .where(
+            ListeningHistory.session_id.in_(session_ids),
+            ListeningHistory.event.in_(("skipped", "completed")),
+        )
+        .group_by(ListeningHistory.session_id, ListeningHistory.event)
+    )
+    lh_rows = (await session.execute(lh_stats_stmt)).all()
+
+    # Build lookup: {session_id: {event: count}}
+    lh_lookup: dict[int, dict[str, int]] = {}
+    for row in lh_rows:
+        lh_lookup.setdefault(row.session_id, {})[row.event] = row.cnt
+
+    # Batch fetch user nicknames
+    user_ids = list({s.user_id for s in recent_sessions})
+    user_stmt = select(User.id, User.nickname).where(User.id.in_(user_ids))
+    user_rows = (await session.execute(user_stmt)).all()
+    user_names: dict[int, str] = {row.id: row.nickname or "?" for row in user_rows}
+
+    # 3. Analyze sessions (in-memory, no DB queries)
     for s in recent_sessions:
-        total_events = (
-            await session.execute(
-                select(func.count())
-                .select_from(ListeningHistory)
-                .where(ListeningHistory.session_id == s.id)
-            )
-        ).scalar() or 0
-        skip_count = (
-            await session.execute(
-                select(func.count())
-                .select_from(ListeningHistory)
-                .where(
-                    ListeningHistory.session_id == s.id,
-                    ListeningHistory.event == "skipped",
-                )
-            )
-        ).scalar() or 0
+        stats = lh_lookup.get(s.id, {})
+        total_events = stats.get("skipped", 0) + stats.get("completed", 0)
+        skip_count = stats.get("skipped", 0)
 
         if total_events >= 3 and skip_count / total_events > 0.5:
-            user_name = (await session.execute(select(User.nickname).where(User.id == s.user_id))).scalar() or "?"
+            user_name = user_names.get(s.user_id, "?")
             alerts.append({
                 "level": "info",
                 "title": "高跳过率会话",
@@ -305,10 +326,8 @@ async def admin_anomalies(
                 "suggestion": "建议检查该用户的音乐偏好画像是否需要调整",
             })
 
-    # 3. Abnormally short sessions (< 3 items played then stopped/error)
-    for s in recent_sessions:
         if s.status in ("completed", "error") and s.played_items < 3:
-            user_name = (await session.execute(select(User.nickname).where(User.id == s.user_id))).scalar() or "?"
+            user_name = user_names.get(s.user_id, "?")
             alerts.append({
                 "level": "warning" if s.status == "error" else "info",
                 "title": "短会话" if s.played_items > 0 else "空会话",
@@ -360,9 +379,8 @@ async def force_stop_session(
     target.status = "completed"
     await session.commit()
 
-    # Broadcast session status update
-    from ..routers.ws import ws_manager
-    await ws_manager.broadcast({
+    # Broadcast session status to the session owner
+    await ws_manager.broadcast_to_user(target.user_id or 0, {
         "type": "session_status",
         "session": {
             "id": target.id,

@@ -171,20 +171,34 @@ def _parse_json_response(text: str) -> dict:
         lines = text.split("\n")
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
         text = text.strip()
+
+    parsed = None
     # Try direct parse
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
     except json.JSONDecodeError:
         pass
+
     # Try to find JSON object in text
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-    raise ValueError(f"Failed to parse JSON from response: {text[:200]}...")
+    if parsed is None:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                parsed = json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+
+    if parsed is None:
+        raise ValueError(f"Failed to parse JSON from response: {text[:200]}...")
+
+    # Validate required fields
+    if "script" not in parsed:
+        raise ValueError(f"JSON response missing 'script' field: {text[:200]}...")
+    if not isinstance(parsed["script"], list):
+        raise ValueError(f"JSON 'script' field must be an array: {text[:200]}...")
+
+    return parsed
 
 
 async def generate_continuation(db: AsyncSession, original_request: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
@@ -220,8 +234,8 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     return _parse_json_response(text)
 
 
-async def _get_song_candidates(db: AsyncSession, limit: int = 200, exclude_ids: list[int] | None = None) -> list[Song]:
-    """Get songs for AI to choose from. Prioritize high popularity + mood variety."""
+async def _get_song_candidates(db: AsyncSession, limit: int = 80, exclude_ids: list[int] | None = None) -> list[Song]:
+    """Get songs for AI to choose from. Prioritize high popularity + mood variety. Limit kept low to reduce token usage."""
     query = select(Song).where(Song.mood_tags != None).order_by(Song.popularity.desc().nullslast())
     if exclude_ids:
         query = query.where(Song.id.notin_(exclude_ids))
@@ -498,9 +512,22 @@ def _fallback_script(songs: list[Song], user_request: str, persona: str = "xiaoy
     if weather_info:
         weather_hint = f" 外面{weather_info.split('。')[0]}。"
 
+    # B7: ensure we have at least some songs
+    if not picks and songs:
+        import random as _r
+        picks = _r.sample(songs, min(6, len(songs)))
+    if not picks:
+        return {
+            "session_theme": f"「{user_request}」· 无可用歌曲",
+            "greeting_tts": f"抱歉，{time_label}好。目前歌单里还没有歌曲，请先导入歌单后再试。",
+            "script": [],
+            "closing_tts": "",
+        }
+
     greeting = f"{time_label}好，我是{p['name']}。你说「{user_request}」——我懂你。{weather_hint}来，用音乐陪你。"
 
-    script = [{"type": "tts", "text": greeting}]
+    # script array contains only songs and TTS bridges (no greeting/closing)
+    script = []
     for i, s in enumerate(picks):
         script.append({
             "type": "song",
@@ -515,7 +542,6 @@ def _fallback_script(songs: list[Song], user_request: str, persona: str = "xiaoy
             })
 
     closing = f"今天的音乐到这里。我是{p['name']}，下次再见。"
-    script.append({"type": "tts", "text": closing})
 
     return {
         "session_theme": f"「{user_request}」· 本地精选",

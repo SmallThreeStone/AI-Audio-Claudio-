@@ -13,6 +13,7 @@ import QueuePanel from './components/Queue/QueuePanel'
 import PlaylistBrowser from './components/Library/PlaylistBrowser'
 import ScriptTranscript from './components/Player/ScriptTranscript'
 import ShortcutHelp from './components/common/ShortcutHelp'
+import SettingsPanel from './components/Settings/SettingsPanel'
 import MusicProfilePanel from './components/Library/MusicProfile'
 import { useWebSocket } from './hooks/useWebSocket'
 
@@ -118,6 +119,7 @@ function MainApp() {
 
       <ScriptTranscript />
       <ShortcutHelp />
+      <SettingsPanel />
       <InstallPrompt />
       <MobileNav active={mobileTab} onChange={setMobileTab} />
     </div>

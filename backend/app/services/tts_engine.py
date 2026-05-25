@@ -42,6 +42,9 @@ class EdgeTTSProvider(BaseTTSProvider):
         import edge_tts
         output_path = TTS_CACHE_DIR / f"{file_id}.mp3"
 
+        if output_path.exists():
+            return f"/api/audio/tts/{file_id}.mp3"
+
         communicate = edge_tts.Communicate(
             text=text,
             voice=TTS_VOICE,
@@ -80,6 +83,9 @@ class FishAudioProvider(BaseTTSProvider):
     async def generate(self, text: str, file_id: int, emotion_tags: str = "") -> str:
         client = await self._get_client()
         output_path = TTS_CACHE_DIR / f"{file_id}.mp3"
+
+        if output_path.exists():
+            return f"/api/audio/tts/{file_id}.mp3"
 
         text = self._apply_emotion(text, emotion_tags)
 

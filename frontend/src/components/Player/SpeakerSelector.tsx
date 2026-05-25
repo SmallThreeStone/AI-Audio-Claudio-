@@ -13,14 +13,15 @@ export default function SpeakerSelector() {
   const handleDiscover = async () => {
     setError(null)
     setIsDiscovering(true)
+    // If we already have cached devices, keep showing them while refreshing
     try {
-      const devices = await getDlnaDevices(true)
+      const devices = await getDlnaDevices(dlnaDevices.length === 0) // force only if no cache
       setDlnaDevices(devices)
-      if (devices.length === 0) {
+      if (devices.length === 0 && dlnaDevices.length === 0) {
         setError('未发现 DLNA 设备')
       }
     } catch {
-      setError('搜索失败')
+      if (dlnaDevices.length === 0) setError('搜索失败')
     } finally {
       setIsDiscovering(false)
     }

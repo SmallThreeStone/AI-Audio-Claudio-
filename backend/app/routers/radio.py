@@ -17,7 +17,7 @@ from ..services.queue_manager import build_queue_from_script, check_refill
 from ..services.weather_service import get_weather_summary, get_weather_structured
 from ..services.greeting_service import build_greeting
 from ..services.calendar_service import get_upcoming_events, build_calendar_summary
-from ..routers.ws import ws_manager
+from ..utils.broadcast import ws_manager
 
 router = APIRouter(prefix="/api/radio", tags=["radio"])
 
@@ -256,7 +256,9 @@ async def _broadcast_queue(db: AsyncSession, session_id: int, initiator_client_i
     if not s:
         return
     data = await _build_queue_response(db, s, initiator_client_id)
-    await ws_manager.broadcast(data)
+    # Only broadcast to the session owner, not all connected clients
+    user_id = s.user_id if s.user_id else 0
+    await ws_manager.broadcast_to_user(user_id, data)
 
 
 def _session_status_msg(s: DJSession) -> dict:
@@ -484,11 +486,7 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
     total_likes = liked_result.scalar() or 0
 
     # ===== Behavioral insights (per-user) =====
-
-    def _user_filter(query):
-        if user_id is not None:
-            return query.where(ListeningHistory.user_id == user_id)
-        return query
+    from ..utils.user_filter import apply_user_filter as _user_filter
 
     # Total listen events
     total_listens_result = await session.execute(

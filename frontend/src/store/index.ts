@@ -22,11 +22,15 @@ interface PlayerSlice {
   currentTime: number
   duration: number
   volume: number
+  playHistory: QueueItem[]
+  previousItem: QueueItem | null
   setIsPlaying: (playing: boolean) => void
   setCurrentItem: (item: QueueItem | null) => void
   setCurrentTime: (time: number) => void
   setDuration: (duration: number) => void
   setVolume: (volume: number) => void
+  addToHistory: (item: QueueItem) => void
+  clearHistory: () => void
 }
 
 interface QueueSlice {
@@ -93,11 +97,20 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   currentTime: 0,
   duration: 0,
   volume: 0.8,
+  playHistory: [],
+  previousItem: null,
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setCurrentItem: (currentItem) => set({ currentItem }),
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),
   setVolume: (volume) => set({ volume }),
+  addToHistory: (item) => set((s) => {
+    // Keep last 50 played items, avoid duplicates in a row
+    const prev = s.playHistory[0]
+    if (prev && prev.id === item.id) return s
+    return { playHistory: [item, ...s.playHistory].slice(0, 50), previousItem: item }
+  }),
+  clearHistory: () => set({ playHistory: [], previousItem: null }),
 
   // Queue
   queue: [],

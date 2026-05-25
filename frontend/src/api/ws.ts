@@ -4,41 +4,70 @@ class RadioWebSocket {
   private ws: WebSocket | null = null
   private handlers: Map<string, Set<WSHandler>> = new Map()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private pingTimer: ReturnType<typeof setInterval> | null = null
+  private pongTimer: ReturnType<typeof setTimeout> | null = null
   private manualClose = false
 
-  connect() {
+  connect(userId: number = 0) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${window.location.host}/ws/radio`
+    const url = `${protocol}//${window.location.host}/ws/radio?user_id=${userId}`
 
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
-      console.log('[WS] Connected')
+      // Start heartbeat
+      this.pingTimer = setInterval(() => {
+        this.send({ type: 'ping' })
+        // Expect pong within 10s, otherwise reconnect
+        this.pongTimer = setTimeout(() => {
+          if (this.ws) {
+            this.ws.close()
+          }
+        }, 10000)
+      }, 30000)
     }
 
     this.ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        if (msg.type === 'pong') {
+          if (this.pongTimer) {
+            clearTimeout(this.pongTimer)
+            this.pongTimer = null
+          }
+          return
+        }
         const handlers = this.handlers.get(msg.type)
         if (handlers) {
           handlers.forEach((h) => h(msg))
         }
       } catch (e) {
-        console.error('[WS] Parse error:', e)
+        if (import.meta.env.DEV) console.error('[WS] Parse error:', e)
       }
     }
 
     this.ws.onclose = () => {
+      this.clearTimers()
       if (this.manualClose) {
         this.manualClose = false
         return
       }
-      console.log('[WS] Disconnected, reconnecting in 3s...')
-      this.reconnectTimer = setTimeout(() => this.connect(), 3000)
+      this.reconnectTimer = setTimeout(() => this.connect(userId), 3000)
     }
 
-    this.ws.onerror = (e) => {
-      console.error('[WS] Error:', e)
+    this.ws.onerror = () => {
+      // onclose will fire after this and trigger reconnect
+    }
+  }
+
+  private clearTimers() {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = null
+    }
+    if (this.pongTimer) {
+      clearTimeout(this.pongTimer)
+      this.pongTimer = null
     }
   }
 
@@ -64,6 +93,7 @@ class RadioWebSocket {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
+    this.clearTimers()
     this.ws?.close()
     this.ws = null
   }

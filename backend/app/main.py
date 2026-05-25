@@ -1,10 +1,13 @@
 import json
 import os
+import time
 import logging
+from collections import defaultdict
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from .database import init_db, async_session
@@ -14,6 +17,11 @@ from .services.sidecar_manager import sidecar
 from .utils.cookie_store import load_cookies
 
 logger = logging.getLogger(__name__)
+
+# Simple in-memory rate limiter (IP -> timestamps)
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_MAX = 5  # max requests per window
+_RATE_LIMIT_WINDOW = 60  # seconds
 
 
 async def restore_session():
@@ -67,11 +75,13 @@ async def lifespan(app: FastAPI):
     await sidecar.stop()
 
 
-app = FastAPI(title="AI Radio - Claudio FM", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="AI Radio - Claudio FM", version="3.0.0", lifespan=lifespan)
 
+# CORS: allow all origins in dev; configure CORS_ORIGINS env var for production
+_allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,16 +97,51 @@ app.include_router(dlna.router)
 app.include_router(calendar.router)
 app.include_router(admin.router)
 
-# Serve frontend static files in production
+# Serve frontend static files in production (SPA fallback via middleware)
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 if os.path.isdir(FRONTEND_DIR):
+    from starlette.responses import FileResponse, Response
+    from starlette.middleware.base import BaseHTTPMiddleware
+
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
+    class RateLimitMiddleware(BaseHTTPMiddleware):
+        """Simple IP-based rate limiter for radio request endpoint."""
+        async def dispatch(self, request: Request, call_next):
+            if request.url.path == "/api/radio/request":
+                client_ip = request.client.host if request.client else "unknown"
+                now = time.time()
+                window_start = now - _RATE_LIMIT_WINDOW
+                timestamps = [t for t in _rate_limit_store[client_ip] if t > window_start]
+                _rate_limit_store[client_ip] = timestamps
+                if len(timestamps) >= _RATE_LIMIT_MAX:
+                    return JSONResponse(
+                        status_code=429,
+                        content={"detail": "请求过于频繁，请稍后再试", "retry_after": int(window_start + _RATE_LIMIT_WINDOW - now)},
+                    )
+                _rate_limit_store[client_ip].append(now)
+            return await call_next(request)
+
+    app.add_middleware(RateLimitMiddleware)
+
+    class SPAMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            # Let API, WebSocket, and static files pass through
+            path = request.url.path
+            if path.startswith("/api/") or path.startswith("/ws/") or path.startswith("/assets/"):
+                return await call_next(request)
+            # Serve frontend static file or fallback to index.html
+            file_path = os.path.join(FRONTEND_DIR, path.lstrip("/")) if path != "/" else os.path.join(FRONTEND_DIR, "index.html")
+            if path != "/" and os.path.isfile(file_path):
+                return FileResponse(file_path)
+            return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    app.add_middleware(SPAMiddleware)
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": "3.0.0"}
 
 
 @app.get("/api/settings/voices")
