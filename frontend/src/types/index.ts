@@ -1,5 +1,6 @@
 export interface User {
   id: number
+  client_id?: string
   netease_uid?: number
   nickname?: string
   avatar_url?: string

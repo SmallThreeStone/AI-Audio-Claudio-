@@ -50,8 +50,9 @@ def _parse_range(range_header: str, file_size: int) -> tuple[int, int]:
 
 
 @router.get("/music/{song_id}")
-async def serve_music(song_id: int, session: AsyncSession = Depends(get_session)):
-    url = await get_song_url(session, song_id)
+async def serve_music(song_id: int, request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = getattr(request.state, "user_id", None)
+    url = await get_song_url(session, song_id, user_id)
     if not url:
         raise HTTPException(status_code=404, detail="Song URL not available")
 

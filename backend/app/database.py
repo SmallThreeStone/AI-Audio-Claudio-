@@ -25,12 +25,18 @@ async def init_db():
                 ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'"),
                 ("songs", "cached_stream_url", "ALTER TABLE songs ADD COLUMN cached_stream_url TEXT"),
                 ("users", "tts_provider", "ALTER TABLE users ADD COLUMN tts_provider VARCHAR(20) NOT NULL DEFAULT 'edge'"),
+                ("users", "client_id", "ALTER TABLE users ADD COLUMN client_id VARCHAR(64)"),
             ]
             for table, column, sql in migrations:
                 info = sync_conn.exec_driver_sql(f"PRAGMA table_info({table})")
                 columns = [row[1] for row in info]
                 if column not in columns:
                     sync_conn.exec_driver_sql(sql)
+
+            # Create unique index on client_id (SQLite ALTER TABLE doesn't support UNIQUE)
+            ci_info = sync_conn.exec_driver_sql("PRAGMA index_list(users)")
+            if not any(row[1] == "idx_users_client_id" for row in ci_info):
+                sync_conn.exec_driver_sql("CREATE UNIQUE INDEX idx_users_client_id ON users(client_id)")
 
             # Backfill netease_listening.user_id for existing rows (single-user era data)
             nl_info = sync_conn.exec_driver_sql("PRAGMA table_info(netease_listening)")

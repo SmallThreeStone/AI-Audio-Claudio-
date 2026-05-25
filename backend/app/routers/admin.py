@@ -1,6 +1,6 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -15,19 +15,22 @@ from ..utils.broadcast import ws_manager
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-async def verify_admin(session: AsyncSession = Depends(get_session)) -> User:
-    # NOTE: Uses first logged-in user (single-user assumption).
-    # Multi-user would need session tokens / request-scoped user identity.
-    result = await session.execute(select(User).where(User.login_status == "logged_in"))
+async def verify_admin(request: Request, session: AsyncSession = Depends(get_session)) -> User:
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar()
     if not user or user.role not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 
-async def verify_owner(session: AsyncSession = Depends(get_session)) -> User:
-    # NOTE: Same single-user assumption as verify_admin.
-    result = await session.execute(select(User).where(User.login_status == "logged_in"))
+async def verify_owner(request: Request, session: AsyncSession = Depends(get_session)) -> User:
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar()
     if not user or user.role != "owner":
         raise HTTPException(status_code=403, detail="Owner access required")

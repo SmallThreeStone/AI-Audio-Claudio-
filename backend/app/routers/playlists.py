@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -11,12 +11,11 @@ router = APIRouter(prefix="/api/playlists", tags=["playlists"])
 
 
 @router.get("")
-async def list_playlists(session: AsyncSession = Depends(get_session)):
-    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
-    user = user_result.scalar()
+async def list_playlists(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = getattr(request.state, "user_id", None)
     query = select(Playlist).order_by(Playlist.is_liked.desc(), Playlist.song_count.desc())
-    if user:
-        query = query.where(Playlist.user_id == user.id)
+    if user_id:
+        query = query.where(Playlist.user_id == user_id)
     result = await session.execute(query)
     playlists = result.scalars().all()
     return [
@@ -35,9 +34,12 @@ async def list_playlists(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/sync")
-async def sync_playlists(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(User).where(User.login_status == "logged_in"))
-    user = result.scalar()
+async def sync_playlists(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        return {"error": "Not logged in"}
+    user_result = await session.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar()
     if not user:
         return {"error": "Not logged in"}
 

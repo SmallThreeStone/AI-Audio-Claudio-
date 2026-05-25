@@ -47,7 +47,7 @@ cd frontend && npm run dev
 
 ## 当前版本
 
-V3.1 — 多用户数据隔离、管理后台图表、设备隔离播放、移动端优化、PWA 安全区适配、Docker 部署、20+ 项 Bug 修复与优化
+V3.2 — 多用户数据隔离、AuthMiddleware 身份注入、全链路 session/WS 隔离、管理后台图表、设备隔离播放、移动端优化、PWA 安全区适配、Docker 部署
 
 ## 演进路线图
 

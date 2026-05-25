@@ -15,7 +15,7 @@ from .database import init_db, async_session
 from .models.user import User
 from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar, admin
 from .services.sidecar_manager import sidecar
-from .utils.cookie_store import load_cookies
+from .utils.auth import AuthMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -24,60 +24,61 @@ _RATE_LIMIT_MAX = 5  # max requests per window
 _RATE_LIMIT_WINDOW = 60  # seconds
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
 
-# Rate limiter middleware (always active, not gated by FRONTEND_DIR)
+# Rate limiter middleware — uses X-Client-Id as primary key, falls back to IP
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple IP-based rate limiter for radio request endpoint."""
     async def dispatch(self, request: Request, call_next):
         if request.url.path == "/api/radio/request":
-            client_ip = request.client.host if request.client else "unknown"
+            client_key = request.headers.get("X-Client-Id") or (
+                request.client.host if request.client else "unknown"
+            )
             now = time.time()
             window_start = now - _RATE_LIMIT_WINDOW
-            timestamps = [t for t in _rate_limit_store[client_ip] if t > window_start]
-            _rate_limit_store[client_ip] = timestamps
+            timestamps = [t for t in _rate_limit_store[client_key] if t > window_start]
+            _rate_limit_store[client_key] = timestamps
             if len(timestamps) >= _RATE_LIMIT_MAX:
-                # retry_after = seconds until the oldest request expires
                 retry = int(timestamps[0] + _RATE_LIMIT_WINDOW - now)
                 return JSONResponse(
                     status_code=429,
                     content={"detail": "请求过于频繁，请稍后再试", "retry_after": max(retry, 1)},
                 )
-            _rate_limit_store[client_ip].append(now)
+            _rate_limit_store[client_key].append(now)
         return await call_next(request)
 
 
 async def restore_session():
-    """Restore NetEase login session from saved cookies on startup."""
-    cookies = load_cookies()
-    if not cookies:
-        return
-
+    """Restore NetEase login sessions for all users with stored cookies on startup."""
     async with async_session() as session:
-        result = await session.execute(select(User).limit(1))
-        user = result.scalar()
+        result = await session.execute(
+            select(User).where(User.cookies_json != None)
+        )
+        users = result.scalars().all()
 
-        if not user:
-            # Create user from saved cookies if DB was reset
-            import httpx
+        if not users:
+            return
+
+        import httpx
+        for user in users:
             try:
+                cookies = json.loads(user.cookies_json or "{}")
+                if not cookies:
+                    continue
                 async with httpx.AsyncClient() as client:
-                    r = await client.get("http://127.0.0.1:3000/user/account", cookies=cookies, timeout=10)
+                    r = await client.get(
+                        "http://127.0.0.1:3000/login/status",
+                        cookies=cookies,
+                        timeout=10,
+                    )
                     data = r.json()
-                profile = data.get("profile", {})
-                user = User(
-                    netease_uid=str(profile.get("userId", "")),
-                    nickname=profile.get("nickname", ""),
-                    avatar_url=profile.get("avatarUrl", ""),
-                    cookies_json=json.dumps(cookies),
-                    login_status="logged_in",
-                )
-                session.add(user)
-                logger.info(f"Restored session for user: {user.nickname}")
+                # Check if cookies are still valid
+                account = data.get("data", {}).get("account") or data.get("account")
+                if account:
+                    user.login_status = "logged_in"
+                    logger.info(f"Restored session for user {user.id}: {user.nickname}")
+                else:
+                    logger.info(f"User {user.id} cookies expired, marking logged_out")
+                    user.login_status = "logged_out"
             except Exception as e:
-                logger.warning(f"Failed to create user from cookies: {e}")
-                return
-        else:
-            user.cookies_json = json.dumps(cookies)
-            user.login_status = "logged_in"
+                logger.warning(f"Failed to restore session for user {user.id}: {e}")
 
         await session.commit()
 
@@ -96,7 +97,7 @@ async def lifespan(app: FastAPI):
     await sidecar.stop()
 
 
-app = FastAPI(title="AI Radio - Claudio FM", version="3.1.0", lifespan=lifespan)
+app = FastAPI(title="AI Radio - Claudio FM", version="3.2.0", lifespan=lifespan)
 
 # CORS: allow all origins in dev; configure CORS_ORIGINS env var for production
 _allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -118,7 +119,9 @@ app.include_router(dlna.router)
 app.include_router(calendar.router)
 app.include_router(admin.router)
 
-# Rate limiter (always active, not gated by production mode)
+# Middleware order (innermost → outermost): CORS → Auth → RateLimit
+# CORS already added above. AuthMiddleware injects request.state.user_id.
+app.add_middleware(AuthMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 # Serve frontend static files in production (SPA fallback via middleware)
@@ -145,7 +148,7 @@ if os.path.isdir(FRONTEND_DIR):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "3.1.0"}
+    return {"status": "ok", "version": "3.2.0"}
 
 
 @app.get("/api/settings/voices")
@@ -164,24 +167,28 @@ async def list_voices():
 
 
 @app.get("/api/settings/tts-provider")
-async def get_tts_provider():
+async def get_tts_provider(request: Request):
     """Get current TTS provider preference."""
-    from .models.user import User
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        return {"provider": "edge"}
     async with async_session() as session:
-        result = await session.execute(select(User).where(User.login_status == "logged_in"))
+        result = await session.execute(select(User).where(User.id == user_id))
         user = result.scalar()
         return {"provider": user.tts_provider if user else "edge"}
 
 
 @app.post("/api/settings/tts-provider")
-async def set_tts_provider(data: dict):
+async def set_tts_provider(request: Request, data: dict):
     """Set TTS provider preference. Body: {"provider": "edge" | "fish"}"""
     provider = data.get("provider", "edge")
     if provider not in ("edge", "fish"):
         return JSONResponse(status_code=400, content={"detail": "provider must be 'edge' or 'fish'"})
-    from .models.user import User
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        return JSONResponse(status_code=400, content={"detail": "No user"})
     async with async_session() as session:
-        result = await session.execute(select(User).where(User.login_status == "logged_in"))
+        result = await session.execute(select(User).where(User.id == user_id))
         user = result.scalar()
         if not user:
             return JSONResponse(status_code=400, content={"detail": "No logged-in user"})

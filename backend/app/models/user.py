@@ -9,6 +9,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    client_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     netease_uid: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     nickname: Mapped[str | None] = mapped_column(String(128))
     avatar_url: Mapped[str | None] = mapped_column(Text)

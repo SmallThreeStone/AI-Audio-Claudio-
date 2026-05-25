@@ -142,10 +142,23 @@ function TTSSection() {
 
 function CalendarSection() {
   const [status, setStatus] = useState<{ connected: boolean; lastSync: string | null } | null>(null)
+  const [connecting, setConnecting] = useState(false)
 
   useEffect(() => {
     getCalendarStatus().then((s) => setStatus(s ? { connected: s.connected, lastSync: s.last_sync } : null)).catch(() => {})
   }, [])
+
+  const handleConnect = async () => {
+    setConnecting(true)
+    try {
+      const { default: api } = await import('../../api/client')
+      const { data } = await api.get('/calendar/auth-url')
+      if (data.auth_url) {
+        window.location.href = data.auth_url
+      }
+    } catch { /* ignore */ }
+    setConnecting(false)
+  }
 
   return (
     <div className="space-y-4">
@@ -183,14 +196,13 @@ CALENDAR_ENABLED=true`}</pre>
         </ol>
       </div>
 
-      <a
-        href="/api/calendar/auth"
-        target="_blank"
-        rel="noopener"
-        className="inline-block px-4 py-2 bg-[var(--color-radio-accent)] text-white text-sm rounded-lg hover:bg-[var(--color-radio-accent-dim)] transition-colors"
+      <button
+        onClick={handleConnect}
+        disabled={connecting}
+        className="inline-block px-4 py-2 bg-[var(--color-radio-accent)] text-white text-sm rounded-lg hover:bg-[var(--color-radio-accent-dim)] transition-colors disabled:opacity-50"
       >
-        {status?.connected ? '重新连接 Google Calendar' : '连接 Google Calendar'}
-      </a>
+        {connecting ? '获取授权链接...' : status?.connected ? '重新连接 Google Calendar' : '连接 Google Calendar'}
+      </button>
     </div>
   )
 }

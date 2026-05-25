@@ -13,7 +13,7 @@ _SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 _REDIRECT_URI = "http://localhost:8000/api/calendar/callback"
 
 
-def get_auth_url() -> str | None:
+def get_auth_url(state: str | None = None) -> str | None:
     """Generate Google OAuth authorization URL."""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         return None
@@ -35,11 +35,12 @@ def get_auth_url() -> str | None:
         access_type="offline",
         prompt="consent",
         include_granted_scopes="true",
+        state=state,
     )
     return url
 
 
-async def handle_callback(db: AsyncSession, code: str) -> bool:
+async def handle_callback(db: AsyncSession, code: str, user_id: int) -> bool:
     """Exchange OAuth code for token and store it."""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         return False
@@ -62,7 +63,7 @@ async def handle_callback(db: AsyncSession, code: str) -> bool:
     creds = flow.credentials
     token_json = creds.to_json()
 
-    result = await db.execute(select(User).where(User.login_status == "logged_in"))
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar()
     if user:
         user.google_token_json = token_json
@@ -71,9 +72,9 @@ async def handle_callback(db: AsyncSession, code: str) -> bool:
     return False
 
 
-async def _get_credentials(db: AsyncSession) -> Credentials | None:
-    """Load stored Google credentials for the logged-in user."""
-    result = await db.execute(select(User).where(User.login_status == "logged_in"))
+async def _get_credentials(db: AsyncSession, user_id: int) -> Credentials | None:
+    """Load stored Google credentials for the specified user."""
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar()
     if not user or not user.google_token_json:
         return None
@@ -87,12 +88,12 @@ async def _get_credentials(db: AsyncSession) -> Credentials | None:
         return None
 
 
-async def get_upcoming_events(db: AsyncSession, max_results: int = 5) -> list[dict]:
+async def get_upcoming_events(db: AsyncSession, user_id: int | None = None, max_results: int = 5) -> list[dict]:
     """Fetch upcoming calendar events. Returns list of {summary, start_time, end_time}."""
-    if not CALENDAR_ENABLED:
+    if not CALENDAR_ENABLED or not user_id:
         return []
 
-    creds = await _get_credentials(db)
+    creds = await _get_credentials(db, user_id)
     if not creds:
         return []
 

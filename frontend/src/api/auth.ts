@@ -7,12 +7,12 @@ export async function startQrLogin() {
 
 export async function checkQrStatus(key: string) {
   const { data } = await api.get('/auth/qr/status', { params: { key } })
-  return data as { code: number; message: string; cookies?: Record<string, string>; nickname?: string; avatar_url?: string; role?: string }
+  return data as { code: number; message: string; cookies?: Record<string, string>; nickname?: string; avatar_url?: string; role?: string; user_id?: number; client_id?: string }
 }
 
 export async function getAuthStatus() {
   const { data } = await api.get('/auth/status')
-  return data as { logged_in: boolean; nickname?: string; avatar_url?: string; role?: string }
+  return data as { logged_in: boolean; user_id?: number; client_id?: string; nickname?: string; avatar_url?: string; role?: string }
 }
 
 export async function logout() {

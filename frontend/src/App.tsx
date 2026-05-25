@@ -18,9 +18,10 @@ import MusicProfilePanel from './components/Library/MusicProfile'
 import { useWebSocket } from './hooks/useWebSocket'
 
 import { getAuthStatus } from './api/auth'
+import { getClientId } from './utils/clientId'
 
 function MainApp() {
-  const { isLoggedIn, showAdmin, setUser, setShowTranscript, setShowShortcuts, session } = useStore()
+  const { isLoggedIn, showAdmin, setUser, setClientId, clientId, setShowTranscript, setShowShortcuts, session } = useStore()
   const [checking, setChecking] = useState(true)
   const [mobileTab, setMobileTab] = useState<MobileTab>('radio')
   const [isPulling, setIsPulling] = useState(false)
@@ -85,13 +86,19 @@ function MainApp() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
+  // Initialize client identity on mount
+  useEffect(() => {
+    setClientId(getClientId())
+  }, [])
+
   // Check backend session on mount (survives page refresh)
   useEffect(() => {
     getAuthStatus()
       .then((data) => {
         if (data.logged_in) {
           setUser({
-            id: 0,
+            id: data.user_id || 0,
+            client_id: data.client_id || clientId || undefined,
             nickname: data.nickname || '',
             avatar_url: data.avatar_url || '',
             login_status: 'logged_in',

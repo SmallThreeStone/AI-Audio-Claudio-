@@ -22,11 +22,8 @@ from ..utils.broadcast import ws_manager
 router = APIRouter(prefix="/api/radio", tags=["radio"])
 
 
-async def _get_current_user_id(session: AsyncSession) -> int | None:
-    """Return the logged-in user's ID, or None. Used for data isolation."""
-    result = await session.execute(select(User).where(User.login_status == "logged_in"))
-    user = result.scalar()
-    return user.id if user else None
+def _user_id_from(request: Request) -> int | None:
+    return getattr(request.state, "user_id", None)
 
 
 class RadioRequest(BaseModel):
@@ -48,15 +45,18 @@ class ListenEventRequest(BaseModel):
 
 @router.post("/request")
 async def request_radio(body: RadioRequest, req: Request, session: AsyncSession = Depends(get_session)):
-    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user_id = _user_id_from(req)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    user_result = await session.execute(select(User).where(User.id == user_id))
     user = user_result.scalar()
     if not user:
         raise HTTPException(status_code=401, detail="Not logged in")
 
-    # Stop any currently active session before starting a new one
+    # Stop any currently active session for this user before starting a new one
     active_result = await session.execute(
         select(DJSession)
-        .where(DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
+        .where(DJSession.user_id == user_id, DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
         .order_by(DJSession.created_at.desc())
         .limit(1)
     )
@@ -64,7 +64,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     if active:
         active.status = "completed"
         await session.commit()
-        await ws_manager.broadcast(_session_status_msg(active))
+        await ws_manager.broadcast_to_user(user_id, _session_status_msg(active))
 
     # Check song library
     from sqlalchemy import func
@@ -80,7 +80,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     # Fetch calendar context
     calendar_summary = None
     try:
-        events = await get_upcoming_events(session)
+        events = await get_upcoming_events(session, user_id)
         calendar_summary = build_calendar_summary(events)
     except Exception:
         pass
@@ -97,10 +97,10 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     await session.commit()
 
     # Notify frontend
-    await ws_manager.broadcast(_session_status_msg(dj_session))
+    await ws_manager.broadcast_to_user(user_id, _session_status_msg(dj_session))
 
     async def _progress(stage: str, message: str):
-        await ws_manager.broadcast({
+        await ws_manager.broadcast_to_user(user_id, {
             "type": "generation_progress",
             "session_id": dj_session.id,
             "stage": stage,
@@ -122,15 +122,15 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
         print(f"Radio generation error: {e}")
         dj_session.status = "error"
         await session.commit()
-        await ws_manager.broadcast(_session_status_msg(dj_session))
+        await ws_manager.broadcast_to_user(user_id, _session_status_msg(dj_session))
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"session_id": dj_session.id, "message": "AI DJ is preparing your session..."}
 
 
 @router.get("/sessions")
-async def list_sessions(session: AsyncSession = Depends(get_session)):
-    user_id = await _get_current_user_id(session)
+async def list_sessions(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = _user_id_from(request)
     query = select(DJSession).order_by(DJSession.created_at.desc()).limit(20)
     if user_id is not None:
         query = query.where(DJSession.user_id == user_id)
@@ -153,8 +153,8 @@ async def list_sessions(session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/queue")
-async def get_queue(session: AsyncSession = Depends(get_session)):
-    user_id = await _get_current_user_id(session)
+async def get_queue(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = _user_id_from(request)
     query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
@@ -178,8 +178,8 @@ async def get_queue(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/skip")
-async def skip_track(session: AsyncSession = Depends(get_session)):
-    user_id = await _get_current_user_id(session)
+async def skip_track(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = _user_id_from(request)
     query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing"]))
@@ -200,7 +200,7 @@ async def skip_track(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/skip-to/{queue_item_id}")
-async def skip_to_track(queue_item_id: int, session: AsyncSession = Depends(get_session)):
+async def skip_to_track(queue_item_id: int, request: Request, session: AsyncSession = Depends(get_session)):
     # Find the target queue item
     qi_result = await session.execute(
         select(QueueItem).where(QueueItem.id == queue_item_id)
@@ -210,7 +210,7 @@ async def skip_to_track(queue_item_id: int, session: AsyncSession = Depends(get_
         return {"status": "not_found"}
 
     # Find the active session (must belong to current user)
-    user_id = await _get_current_user_id(session)
+    user_id = _user_id_from(request)
     active_query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing"]))
@@ -230,8 +230,8 @@ async def skip_to_track(queue_item_id: int, session: AsyncSession = Depends(get_
 
 
 @router.post("/stop")
-async def stop_radio(session: AsyncSession = Depends(get_session)):
-    user_id = await _get_current_user_id(session)
+async def stop_radio(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = _user_id_from(request)
     query = (
         select(DJSession)
         .where(DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
@@ -245,7 +245,7 @@ async def stop_radio(session: AsyncSession = Depends(get_session)):
     if active:
         active.status = "completed"
         await session.commit()
-        await ws_manager.broadcast(_session_status_msg(active))
+        await ws_manager.broadcast_to_user(user_id, _session_status_msg(active))
 
     return {"status": "ok"}
 
@@ -320,7 +320,7 @@ async def get_weather_info(request: Request):
 @router.get("/greeting")
 async def get_greeting(request: Request, session: AsyncSession = Depends(get_session)):
     """Get a context-aware greeting based on time, weather, and listening history."""
-    user_id = await _get_current_user_id(session)
+    user_id = _user_id_from(request)
     client_ip = request.client.host if request.client else "127.0.0.1"
     weather_summary = None
     try:
@@ -331,10 +331,10 @@ async def get_greeting(request: Request, session: AsyncSession = Depends(get_ses
 
 
 @router.post("/feedback")
-async def record_feedback(body: FeedbackRequest, session: AsyncSession = Depends(get_session)):
+async def record_feedback(body: FeedbackRequest, request: Request, session: AsyncSession = Depends(get_session)):
     """Record user feedback (like/dislike) for a queue item and its song."""
     # Verify QueueItem belongs to current user's session
-    user_id = await _get_current_user_id(session)
+    user_id = _user_id_from(request)
     qi_query = select(QueueItem).where(QueueItem.id == body.queue_item_id)
     if user_id is not None:
         qi_query = qi_query.join(DJSession, QueueItem.session_id == DJSession.id).where(DJSession.user_id == user_id)
@@ -360,9 +360,9 @@ async def record_feedback(body: FeedbackRequest, session: AsyncSession = Depends
 
 
 @router.post("/listen-event")
-async def record_listen_event(body: ListenEventRequest, session: AsyncSession = Depends(get_session)):
+async def record_listen_event(body: ListenEventRequest, request: Request, session: AsyncSession = Depends(get_session)):
     """Record a listening event (started/completed/skipped) for behavioral analysis."""
-    user_id = await _get_current_user_id(session)
+    user_id = _user_id_from(request)
 
     # Get queue item, verifying it belongs to current user's session
     qi_query = select(QueueItem).where(QueueItem.id == body.queue_item_id)
@@ -384,12 +384,8 @@ async def record_listen_event(body: ListenEventRequest, session: AsyncSession = 
         duration_sec = duration_ms / 1000.0
         completion_rate = min(body.position_seconds / duration_sec, 1.0) if body.position_seconds > 0 else 0.0
 
-    # Get active user
-    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
-    user = user_result.scalar()
-
     entry = ListeningHistory(
-        user_id=user.id if user else None,
+        user_id=user_id,
         song_id=qi.song_id,
         queue_item_id=body.queue_item_id,
         session_id=qi.session_id,
@@ -413,12 +409,9 @@ async def record_listen_event(body: ListenEventRequest, session: AsyncSession = 
 
 
 @router.get("/profile")
-async def music_profile(session: AsyncSession = Depends(get_session)):
+async def music_profile(request: Request, session: AsyncSession = Depends(get_session)):
     """Get user's music taste profile with behavioral insights."""
-    # Current user for data isolation
-    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
-    user = user_result.scalar()
-    user_id = user.id if user else None
+    user_id = _user_id_from(request)
 
     # Genre distribution
     genre_result = await session.execute(
@@ -611,15 +604,12 @@ async def music_profile(session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/distillation")
-async def get_distillation(session: AsyncSession = Depends(get_session)):
+async def get_distillation(request: Request, session: AsyncSession = Depends(get_session)):
     """Get AI-distilled music taste insights with cross-dimension correlations."""
     from ..services.distillation_service import distill
     import dataclasses
 
-    # Get current user for data isolation
-    user_result = await session.execute(select(User).where(User.login_status == "logged_in"))
-    user = user_result.scalar()
-    user_id = user.id if user else None
+    user_id = _user_id_from(request)
 
     result = await distill(session, user_id)
     return {
@@ -634,10 +624,11 @@ async def get_distillation(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/import-netease-history")
-async def import_netease_history(session: AsyncSession = Depends(get_session)):
+async def import_netease_history(request: Request, session: AsyncSession = Depends(get_session)):
     """Import the user's all-time NetEase Cloud Music listening history."""
     from ..services.netease_import_service import import_netease_history
-    result = await import_netease_history(session)
+    user_id = _user_id_from(request)
+    result = await import_netease_history(session, user_id)
     return result
 
 

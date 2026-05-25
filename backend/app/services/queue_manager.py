@@ -106,6 +106,9 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
         tts_tasks.append((item.id, closing))
         position += 1
 
+    # Capture user_id from session for song URL resolution
+    owner_user_id = s.user_id if s else None
+
     await db.commit()
 
     sem = asyncio.Semaphore(3)
@@ -113,7 +116,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
     async def resolve_one_song(item_id: int, song_id: int):
         async with sem:
             async with async_session_factory() as task_db:
-                url = await get_song_url(task_db, song_id)
+                url = await get_song_url(task_db, song_id, owner_user_id)
                 result = await task_db.execute(select(QueueItem).where(QueueItem.id == item_id))
                 qi = result.scalar()
                 if qi:

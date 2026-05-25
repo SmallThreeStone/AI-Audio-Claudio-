@@ -52,7 +52,8 @@ export default function LoginModal() {
             clearInterval(pollingRef.current)
             clearQrInfo()
             setUser({
-              id: 0,
+              id: result.user_id || 0,
+              client_id: result.client_id,
               nickname: result.nickname,
               avatar_url: result.avatar_url,
               login_status: 'logged_in',

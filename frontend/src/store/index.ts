@@ -3,10 +3,12 @@ import type { User, Playlist, QueueItem, DJSession, DlnaDevice } from '../types'
 
 interface AuthSlice {
   user: User | null
+  clientId: string | null
   isLoggedIn: boolean
   qrKey: string | null
   qrUrl: string | null
   setUser: (user: User | null) => void
+  setClientId: (id: string) => void
   setQrInfo: (key: string, url: string) => void
   clearQrInfo: () => void
 }
@@ -80,10 +82,12 @@ interface SettingsSlice {
 export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice & DlnaSlice & SettingsSlice>((set) => ({
   // Auth
   user: null,
+  clientId: null,
   isLoggedIn: false,
   qrKey: null,
   qrUrl: null,
   setUser: (user) => set({ user, isLoggedIn: !!user && user.login_status === 'logged_in' }),
+  setClientId: (clientId) => set({ clientId }),
   setQrInfo: (key, url) => set({ qrKey: key, qrUrl: url }),
   clearQrInfo: () => set({ qrKey: null, qrUrl: null }),
 

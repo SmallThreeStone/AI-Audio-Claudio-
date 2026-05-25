@@ -5,7 +5,7 @@ import { getQueue } from '../api/radio'
 import type { QueueItem, DJSession } from '../types'
 
 export function useWebSocket() {
-  const { setQueue, setCurrentIndex, setSession, setIsGenerating, setCurrentItem, setGenerationProgress, setIsRestoring } = useStore()
+  const { user, setQueue, setCurrentIndex, setSession, setIsGenerating, setCurrentItem, setGenerationProgress, setIsRestoring } = useStore()
 
   // Hydrate queue on mount (in case of page refresh mid-session)
   const hydrate = useCallback(async () => {
@@ -32,7 +32,8 @@ export function useWebSocket() {
 
   useEffect(() => {
     hydrate()
-    radioWS.connect()
+    const userId = user?.id || 0
+    radioWS.connect(userId)
 
     const unsub1 = radioWS.on('queue_update', (msg) => {
       const items = msg.items as QueueItem[]
@@ -85,5 +86,5 @@ export function useWebSocket() {
       unsub5()
       radioWS.disconnect()
     }
-  }, [])
+  }, [user?.id])
 }

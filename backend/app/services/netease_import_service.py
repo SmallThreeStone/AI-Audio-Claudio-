@@ -16,15 +16,14 @@ from ..models.netease_listening import NeteaseListening
 from .netease_client import netease
 
 
-async def import_netease_history(db: AsyncSession) -> dict:
-    """Import the logged-in user's all-time NetEase listening history.
+async def import_netease_history(db: AsyncSession, user_id: int | None = None) -> dict:
+    """Import a user's all-time NetEase listening history.
 
     Returns: {"imported": N, "skipped": N, "new_songs": N}
     """
-    # Get logged-in user
-    user_result = await db.execute(
-        select(User).where(User.login_status == "logged_in")
-    )
+    if not user_id:
+        return {"error": "Not logged in"}
+    user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar()
     if not user or not user.cookies_json:
         return {"error": "Not logged in to NetEase"}
