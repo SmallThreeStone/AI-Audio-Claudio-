@@ -5,6 +5,8 @@ import LoginModal from './components/Login/LoginModal'
 import Layout from './components/Layout/Layout'
 import AdminDashboard from './components/Admin/AdminDashboard'
 import InstallPrompt from './components/PWA/InstallPrompt'
+import MobileNav from './components/Layout/MobileNav'
+import type { MobileTab } from './components/Layout/MobileNav'
 import RadioPlayer from './components/Player/RadioPlayer'
 import ChatInput from './components/Chat/ChatInput'
 import QueuePanel from './components/Queue/QueuePanel'
@@ -19,6 +21,7 @@ import { getAuthStatus } from './api/auth'
 function MainApp() {
   const { isLoggedIn, showAdmin, setUser, setShowTranscript, setShowShortcuts, session } = useStore()
   const [checking, setChecking] = useState(true)
+  const [mobileTab, setMobileTab] = useState<MobileTab>('radio')
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -81,14 +84,30 @@ function MainApp() {
         <AdminDashboard />
       ) : (
         <Layout>
-          <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full">
+          <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full pb-16 lg:pb-0">
+            {/* Desktop sidebar — unchanged */}
             <aside className="w-72 flex-shrink-0 hidden lg:block">
               <div className="sticky top-12 sm:top-14 overflow-y-auto max-h-[calc(100vh-3rem)] sm:max-h-[calc(100vh-3.5rem)] py-3 sm:py-4 space-y-4">
                 <PlaylistBrowser />
                 <MusicProfilePanel />
               </div>
             </aside>
-            <main className="flex-1 flex flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0">
+
+            {/* Mobile content — switches by tab */}
+            <main className="flex-1 flex flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 lg:hidden">
+              {mobileTab === 'radio' && (
+                <>
+                  <RadioPlayer />
+                  <ChatInput />
+                  <QueuePanel />
+                </>
+              )}
+              {mobileTab === 'playlists' && <PlaylistBrowser />}
+              {mobileTab === 'profile' && <MusicProfilePanel />}
+            </main>
+
+            {/* Desktop main — unchanged (always radio view) */}
+            <main className="flex-1 flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 hidden lg:flex">
               <RadioPlayer />
               <ChatInput />
               <QueuePanel />
@@ -100,6 +119,7 @@ function MainApp() {
       <ScriptTranscript />
       <ShortcutHelp />
       <InstallPrompt />
+      <MobileNav active={mobileTab} onChange={setMobileTab} />
     </div>
   )
 }

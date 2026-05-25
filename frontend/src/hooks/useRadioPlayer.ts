@@ -250,5 +250,12 @@ export function useRadioPlayer() {
     stopRadio()
   }, [setIsPlaying, setCurrentTime, setCurrentItem, setCurrentIndex, setQueue, setSession])
 
-  return { skip, skipTo, stop, togglePause }
+  const seek = useCallback((time: number) => {
+    if (howlRef.current) {
+      howlRef.current.seek(time)
+      setCurrentTime(time)
+    }
+  }, [setCurrentTime])
+
+  return { skip, skipTo, stop, togglePause, seek }
 }

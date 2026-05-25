@@ -59,3 +59,29 @@ body {
     min-width: 44px;
   }
 }
+
+/* Prevent double-tap zoom and pinch zoom on interactive elements */
+html {
+  touch-action: manipulation;
+}
+
+/* Prevent scroll chaining in scrollable panels */
+.overflow-y-auto,
+.overflow-x-auto {
+  overscroll-behavior: contain;
+}
+
+/* Button press feedback on touch */
+button:active,
+[role="button"]:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+/* Mobile bottom nav spacing */
+@media (max-width: 1023px) {
+  .pb-safe {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+}

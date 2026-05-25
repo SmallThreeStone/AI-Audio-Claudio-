@@ -35,7 +35,10 @@ export default function InstallPrompt() {
   if (!showPrompt) return null
 
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-50 max-w-md mx-auto">
+    <div
+      className="fixed left-4 right-4 z-50 max-w-md mx-auto"
+      style={{ bottom: `calc(80px + env(safe-area-inset-bottom, 0px))` }}
+    >
       <div className="bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl p-4 shadow-lg">
         <div className="flex items-center justify-between gap-3">
           <div>

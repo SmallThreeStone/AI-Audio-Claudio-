@@ -4,9 +4,10 @@ interface Props {
   onSkip: () => void
   onStop: () => void
   onTogglePause: () => void
+  onSeek: (time: number) => void
 }
 
-export default function PlayerControls({ onSkip, onStop, onTogglePause }: Props) {
+export default function PlayerControls({ onSkip, onStop, onTogglePause, onSeek }: Props) {
   const { currentTime, duration, volume, isPlaying, session, setVolume, queue } = useStore()
 
   const hasPlayableItems = queue.some(
@@ -15,6 +16,13 @@ export default function PlayerControls({ onSkip, onStop, onTogglePause }: Props)
   if (!session || !hasPlayableItems) return null
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (duration <= 0) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    onSeek(ratio * duration)
+  }
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -26,11 +34,16 @@ export default function PlayerControls({ onSkip, onStop, onTogglePause }: Props)
     <div className="w-full space-y-3">
       {/* Progress bar */}
       <div className="space-y-1">
-        <div className="h-1 bg-[var(--color-radio-border)] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[var(--color-radio-accent)] rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
+        <div
+          className="h-4 -mx-2 py-2 cursor-pointer group"
+          onClick={handleSeek}
+        >
+          <div className="h-1 bg-[var(--color-radio-border)] rounded-full overflow-hidden group-hover:h-1.5 transition-all">
+            <div
+              className="h-full bg-[var(--color-radio-accent)] rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
         <div className="flex justify-between text-xs text-[var(--color-radio-muted)]">
           <span>{formatTime(currentTime)}</span>
