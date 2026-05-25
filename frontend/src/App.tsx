@@ -94,7 +94,7 @@ function MainApp() {
             </aside>
 
             {/* Mobile content — switches by tab */}
-            <main className="flex-1 flex flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 lg:hidden">
+            <main className="flex-1 flex flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 lg:hidden keyboard-avoid">
               {mobileTab === 'radio' && (
                 <>
                   <RadioPlayer />

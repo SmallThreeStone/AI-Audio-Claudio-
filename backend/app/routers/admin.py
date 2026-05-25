@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from ..database import get_session
 from ..models.user import User
 from ..models.dj_session import DJSession
+from ..models.queue_item import QueueItem
 from ..models.listening_history import ListeningHistory
 from ..models.song import Song
 
@@ -16,8 +17,16 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def verify_admin(session: AsyncSession = Depends(get_session)) -> User:
     result = await session.execute(select(User).where(User.login_status == "logged_in"))
     user = result.scalar()
-    if not user or user.role != "admin":
+    if not user or user.role not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+async def verify_owner(session: AsyncSession = Depends(get_session)) -> User:
+    result = await session.execute(select(User).where(User.login_status == "logged_in"))
+    user = result.scalar()
+    if not user or user.role != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
     return user
 
 
@@ -214,4 +223,249 @@ async def admin_listening(
             }
             for e in events
         ]
+    }
+
+
+@router.get("/anomalies")
+async def admin_anomalies(
+    admin_user: User = Depends(verify_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    alerts: list[dict] = []
+
+    # 1. Today's copyright failure rate
+    today = datetime.date.today().isoformat()
+    today_qi_total = (
+        await session.execute(
+            select(func.count())
+            .select_from(QueueItem)
+            .where(
+                QueueItem.item_type == "song",
+                func.date(QueueItem.created_at) == today,
+            )
+        )
+    ).scalar() or 0
+    today_qi_error = (
+        await session.execute(
+            select(func.count())
+            .select_from(QueueItem)
+            .where(
+                QueueItem.item_type == "song",
+                QueueItem.status == "error",
+                func.date(QueueItem.created_at) == today,
+            )
+        )
+    ).scalar() or 0
+
+    if today_qi_total > 0:
+        failure_rate = today_qi_error / today_qi_total
+        if failure_rate > 0.3:
+            alerts.append({
+                "level": "warning",
+                "title": "版权失效率过高",
+                "detail": f"今日 {today_qi_error}/{today_qi_total} 首歌曲 URL 获取失败 ({failure_rate:.0%})",
+                "suggestion": "可能网易云 Cookie 已过期，请重新扫码登录",
+            })
+
+    # 2. High skip rate sessions (last 24h)
+    recent_sessions = (
+        await session.execute(
+            select(DJSession)
+            .where(func.date(DJSession.created_at) >= today)
+            .order_by(DJSession.created_at.desc())
+            .limit(50)
+        )
+    ).scalars().all()
+
+    for s in recent_sessions:
+        total_events = (
+            await session.execute(
+                select(func.count())
+                .select_from(ListeningHistory)
+                .where(ListeningHistory.session_id == s.id)
+            )
+        ).scalar() or 0
+        skip_count = (
+            await session.execute(
+                select(func.count())
+                .select_from(ListeningHistory)
+                .where(
+                    ListeningHistory.session_id == s.id,
+                    ListeningHistory.event == "skipped",
+                )
+            )
+        ).scalar() or 0
+
+        if total_events >= 3 and skip_count / total_events > 0.5:
+            user_name = (await session.execute(select(User.nickname).where(User.id == s.user_id))).scalar() or "?"
+            alerts.append({
+                "level": "info",
+                "title": "高跳过率会话",
+                "detail": f"用户 {user_name} 的会话 #{s.id} 跳过率 {skip_count}/{total_events} ({skip_count/total_events:.0%})——「{s.user_request[:30]}」",
+                "suggestion": "建议检查该用户的音乐偏好画像是否需要调整",
+            })
+
+    # 3. Abnormally short sessions (< 3 items played then stopped/error)
+    for s in recent_sessions:
+        if s.status in ("completed", "error") and s.played_items < 3:
+            user_name = (await session.execute(select(User.nickname).where(User.id == s.user_id))).scalar() or "?"
+            alerts.append({
+                "level": "warning" if s.status == "error" else "info",
+                "title": "短会话" if s.played_items > 0 else "空会话",
+                "detail": f"用户 {user_name} 的会话 #{s.id} 仅播放 {s.played_items} 首即{'报错' if s.status == 'error' else '停止'}——「{s.user_request[:30]}」",
+                "suggestion": "可能是版权歌曲过多或生成失败" if s.status == "error" else "用户可能不满意当前推荐",
+            })
+
+    # Sort: warning first, then info
+    alerts.sort(key=lambda a: (0 if a["level"] == "warning" else 1))
+
+    return {"alerts": alerts[:20], "total": len(alerts)}
+
+
+# ── Owner-only endpoints ──
+
+@router.put("/users/{user_id}/role")
+async def set_user_role(
+    user_id: int,
+    body: dict,
+    owner: User = Depends(verify_owner),
+    session: AsyncSession = Depends(get_session),
+):
+    """Owner sets a user's role (user/admin/owner)."""
+    new_role = body.get("role", "user")
+    if new_role not in ("user", "admin", "owner"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    result = await session.execute(select(User).where(User.id == user_id))
+    target = result.scalar()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.role = new_role
+    await session.commit()
+    return {"status": "ok", "user_id": user_id, "role": new_role}
+
+
+@router.post("/sessions/{session_id}/stop")
+async def force_stop_session(
+    session_id: int,
+    owner: User = Depends(verify_owner),
+    session: AsyncSession = Depends(get_session),
+):
+    """Owner force-stops any active session."""
+    result = await session.execute(select(DJSession).where(DJSession.id == session_id))
+    target = result.scalar()
+    if not target:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if target.status in ("completed",):
+        return {"status": "already_stopped"}
+    target.status = "completed"
+    await session.commit()
+
+    # Broadcast session status update
+    from ..routers.ws import ws_manager
+    await ws_manager.broadcast({
+        "type": "session_status",
+        "session": {
+            "id": target.id,
+            "user_request": target.user_request,
+            "session_theme": target.session_theme,
+            "status": target.status,
+            "persona": target.persona or "xiaoyu",
+            "total_items": target.total_items,
+            "played_items": target.played_items,
+            "weather_summary": target.weather_summary,
+            "created_at": target.created_at.isoformat() if target.created_at else None,
+        },
+        "message": "会话已被管理员强制停止",
+    })
+
+    return {"status": "ok"}
+
+
+@router.get("/users/{user_id}/profile")
+async def view_user_profile(
+    user_id: int,
+    owner: User = Depends(verify_owner),
+    session: AsyncSession = Depends(get_session),
+):
+    """Owner views any user's music profile."""
+    from ..routers.radio import music_profile as _profile_handler
+    # Temporarily override the user lookup to target the specified user
+    # We'll re-use the profile logic but with a different user context
+    # For simplicity, build the profile manually here
+
+    user_result = await session.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    import json
+    from sqlalchemy import case, Integer
+
+    total_listens_result = await session.execute(
+        select(func.count()).select_from(ListeningHistory).where(ListeningHistory.user_id == user_id)
+    )
+    total_listens = total_listens_result.scalar() or 0
+
+    # Genre distribution from this user's listening
+    genre_result = await session.execute(
+        select(Song.genre, func.count())
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+        .where(ListeningHistory.user_id == user_id, Song.genre != None)
+        .group_by(Song.genre)
+        .order_by(func.count().desc())
+        .limit(12)
+    )
+    genres = [{"name": g[0], "count": g[1]} for g in genre_result.all()]
+
+    # Top artists for this user
+    artist_result = await session.execute(
+        select(Song.artist, func.count())
+        .join(ListeningHistory, ListeningHistory.song_id == Song.id)
+        .where(ListeningHistory.user_id == user_id, Song.artist != None)
+        .group_by(Song.artist)
+        .order_by(func.count().desc())
+        .limit(10)
+    )
+    artists = [{"name": a[0], "count": a[1]} for a in artist_result.all()]
+
+    # Time of day pattern
+    hour_result = await session.execute(
+        select(
+            func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
+            func.count(),
+        )
+        .where(ListeningHistory.user_id == user_id, ListeningHistory.event == "started")
+        .group_by(func.strftime("%H", ListeningHistory.listened_at))
+    )
+    time_patterns = {"morning": 0, "afternoon": 0, "evening": 0, "night": 0}
+    for hour, cnt in hour_result.all():
+        if hour is None:
+            continue
+        if 6 <= hour < 12:
+            time_patterns["morning"] += cnt
+        elif 12 <= hour < 18:
+            time_patterns["afternoon"] += cnt
+        elif 18 <= hour < 23:
+            time_patterns["evening"] += cnt
+        else:
+            time_patterns["night"] += cnt
+
+    # Session count
+    session_count = (
+        await session.execute(select(func.count()).select_from(DJSession).where(DJSession.user_id == user_id))
+    ).scalar() or 0
+
+    return {
+        "user": {
+            "id": user.id,
+            "nickname": user.nickname,
+            "avatar_url": user.avatar_url,
+            "login_status": user.login_status,
+            "role": user.role,
+        },
+        "total_listens": total_listens,
+        "session_count": session_count,
+        "genres": genres,
+        "artists": artists,
+        "time_patterns": time_patterns,
     }

@@ -44,6 +44,9 @@ export function useRadioPlayer() {
 
       if (!src) {
         radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: 'no_url' })
+        if (isTTS) {
+          useStore.getState().setNotice('正在跳过播报，直接为您放歌...')
+        }
         const next = index + 1
         if (next < queue.length) {
           playItem(next)

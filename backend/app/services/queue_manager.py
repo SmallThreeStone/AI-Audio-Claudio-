@@ -119,17 +119,13 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
         if not song_tasks:
             return
         if progress_callback:
-            await progress_callback("fetching_urls", f"加载音乐链接 0/{len(song_tasks)}...")
+            await progress_callback("preparing", f"加载 {len(song_tasks)} 首歌曲 | 合成 {len(tts_tasks)} 段串词...")
         tasks = [resolve_one_song(item_id, song_id) for item_id, song_id in song_tasks]
         await asyncio.gather(*tasks)
-        if progress_callback:
-            await progress_callback("fetching_urls", f"加载音乐链接完成")
 
     async def synthesize_all_tts():
         if not tts_tasks:
             return
-        if progress_callback:
-            await progress_callback("synthesizing", f"合成 DJ 串词 0/{len(tts_tasks)}...")
         paths = await generate_tts_batch(tts_tasks, emotion_tags)
         for item_id, audio_path in paths.items():
             result = await db.execute(select(QueueItem).where(QueueItem.id == item_id))

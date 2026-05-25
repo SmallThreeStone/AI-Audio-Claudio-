@@ -61,6 +61,7 @@ interface SettingsSlice {
   showSettings: boolean
   showAdmin: boolean
   isRestoring: boolean
+  notice: string | null
   setSelectedPersona: (persona: string) => void
   setSleepTimer: (minutes: number) => void
   clearSleepTimer: () => void
@@ -69,6 +70,7 @@ interface SettingsSlice {
   setShowSettings: (show: boolean) => void
   setShowAdmin: (show: boolean) => void
   setIsRestoring: (restoring: boolean) => void
+  setNotice: (msg: string | null) => void
 }
 
 export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice & DlnaSlice & SettingsSlice>((set) => ({
@@ -127,6 +129,7 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   showSettings: false,
   showAdmin: false,
   isRestoring: false,
+  notice: null,
   setSelectedPersona: (persona) => set({ selectedPersona: persona }),
   setSleepTimer: (minutes) => set({ sleepTimerMinutes: minutes, sleepTimerEnd: Date.now() + minutes * 60 * 1000 }),
   clearSleepTimer: () => set({ sleepTimerMinutes: 0, sleepTimerEnd: null }),
@@ -135,4 +138,5 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   setShowSettings: (show) => set({ showSettings: show }),
   setShowAdmin: (show) => set({ showAdmin: show }),
   setIsRestoring: (restoring) => set({ isRestoring: restoring }),
+  setNotice: (notice) => set({ notice }),
 }))

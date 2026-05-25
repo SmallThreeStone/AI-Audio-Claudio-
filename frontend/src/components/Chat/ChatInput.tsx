@@ -19,6 +19,7 @@ export default function ChatInput() {
   const [suggestedMood, setSuggestedMood] = useState<string | null>(null)
   const { setIsGenerating, isGenerating, selectedPersona } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getGreeting()
@@ -27,6 +28,24 @@ export default function ChatInput() {
         setSuggestedMood(g.suggested_mood)
       })
       .catch(() => {})
+  }, [])
+
+  // Keyboard avoidance for mobile
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const handleResize = () => {
+      const keyboardHeight = window.innerHeight - viewport.height
+      document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`)
+      const input = inputRef.current
+      if (keyboardHeight > 100 && input && input === document.activeElement) {
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+
+    viewport.addEventListener('resize', handleResize)
+    return () => viewport.removeEventListener('resize', handleResize)
   }, [])
 
   const handleSubmit = async (inputText?: string) => {

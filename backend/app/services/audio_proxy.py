@@ -21,18 +21,29 @@ async def get_song_url(db: AsyncSession, song_id: int) -> str | None:
     if not user:
         return None
 
+    # Check cache: if fetched < 2h ago with a valid URL, reuse it
+    CACHE_TTL = datetime.timedelta(hours=2)
+    if (
+        song.last_url_fetch
+        and song.has_playable_url
+        and song.cached_stream_url
+        and (datetime.now(timezone.utc) - song.last_url_fetch) < CACHE_TTL
+    ):
+        return song.cached_stream_url
+
     cookies = json.loads(user.cookies_json or "{}")
 
-    # Fetch URL from NetEase (always try, URL cache may have been stale)
     url_data = await netease.song_url(song.netease_song_id, cookies)
     urls = url_data.get("data", [])
     if urls and urls[0].get("url"):
         url = urls[0]["url"]
+        song.cached_stream_url = url
         song.last_url_fetch = datetime.now(timezone.utc)
         song.has_playable_url = True
         await db.commit()
         return url
 
     song.has_playable_url = False
+    song.cached_stream_url = None
     await db.commit()
     return None

@@ -23,6 +23,7 @@ async def init_db():
                 ("users", "google_token_json", "ALTER TABLE users ADD COLUMN google_token_json TEXT"),
                 ("netease_listening", "user_id", "ALTER TABLE netease_listening ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"),
                 ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'"),
+                ("songs", "cached_stream_url", "ALTER TABLE songs ADD COLUMN cached_stream_url TEXT"),
             ]
             for table, column, sql in migrations:
                 info = sync_conn.exec_driver_sql(f"PRAGMA table_info({table})")

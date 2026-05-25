@@ -11,20 +11,20 @@ class SidecarManager:
 
     @staticmethod
     def _find_npx(env: dict) -> str:
-        """Find npx.cmd or npx executable from PATH."""
-        path_dirs = env.get("PATH", "").split(";")
+        """Find npx executable from PATH (Windows .cmd / .exe or Linux plain)."""
+        path_str = env.get("PATH", "")
+        path_dirs = path_str.split(";") if ";" in path_str else path_str.split(":")
         for d in path_dirs:
-            npx_cmd = os.path.join(d, "npx.cmd")
-            if os.path.isfile(npx_cmd):
-                return npx_cmd
-            npx_exe = os.path.join(d, "npx.exe")
-            if os.path.isfile(npx_exe):
-                return npx_exe
+            for candidate in ("npx.cmd", "npx.exe", "npx"):
+                full = os.path.join(d, candidate)
+                if os.path.isfile(full):
+                    return full
         # Fallback: try common locations
-        for d in ["E:\\nodejs", "C:\\Program Files\\nodejs"]:
-            npx_cmd = os.path.join(d, "npx.cmd")
-            if os.path.isfile(npx_cmd):
-                return npx_cmd
+        for d in ["E:\\nodejs", "C:\\Program Files\\nodejs", "/usr/local/bin", "/usr/bin"]:
+            for candidate in ("npx.cmd", "npx.exe", "npx"):
+                full = os.path.join(d, candidate)
+                if os.path.isfile(full):
+                    return full
         return "npx"  # Last resort
 
     async def start(self):

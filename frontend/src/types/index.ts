@@ -4,7 +4,7 @@ export interface User {
   nickname?: string
   avatar_url?: string
   login_status: 'logged_out' | 'qr_pending' | 'logged_in'
-  role?: 'admin' | 'user'
+  role?: 'admin' | 'user' | 'owner'
 }
 
 export interface Playlist {

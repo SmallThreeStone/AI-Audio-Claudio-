@@ -21,6 +21,7 @@ class Song(Base):
     popularity: Mapped[int | None] = mapped_column(Integer)
     has_playable_url: Mapped[bool] = mapped_column(Boolean, default=False)
     last_url_fetch: Mapped[datetime.datetime | None] = mapped_column(DateTime)
+    cached_stream_url: Mapped[str | None] = mapped_column(Text, default=None)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     dislike_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime.datetime] = mapped_column(

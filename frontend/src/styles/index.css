@@ -85,3 +85,14 @@ button:active,
     padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Keyboard avoidance — adjusted by ChatInput visualViewport listener */
+:root {
+  --keyboard-height: 0px;
+}
+@media (max-width: 1023px) {
+  .keyboard-avoid {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + var(--keyboard-height));
+    transition: padding-bottom 0.2s ease;
+  }
+}

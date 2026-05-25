@@ -1,8 +1,10 @@
 import json
+import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
 from .database import init_db, async_session
@@ -84,6 +86,12 @@ app.include_router(ws.router)
 app.include_router(dlna.router)
 app.include_router(calendar.router)
 app.include_router(admin.router)
+
+# Serve frontend static files in production
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
 @app.get("/api/health")

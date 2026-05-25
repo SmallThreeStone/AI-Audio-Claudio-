@@ -84,3 +84,39 @@ export async function getAdminHourly(): Promise<AdminHourly[]> {
   const { data } = await api.get('/admin/hourly')
   return data.hourly
 }
+
+export interface AdminAnomaly {
+  level: 'warning' | 'info'
+  title: string
+  detail: string
+  suggestion: string
+}
+
+export async function getAdminAnomalies(): Promise<{ alerts: AdminAnomaly[]; total: number }> {
+  const { data } = await api.get('/admin/anomalies')
+  return data
+}
+
+// Owner-only actions
+
+export interface UserProfile {
+  user: { id: number; nickname: string | null; avatar_url: string | null; login_status: string; role: string }
+  total_listens: number
+  session_count: number
+  genres: { name: string; count: number }[]
+  artists: { name: string; count: number }[]
+  time_patterns: { morning: number; afternoon: number; evening: number; night: number }
+}
+
+export async function setUserRole(userId: number, role: string): Promise<void> {
+  await api.put(`/admin/users/${userId}/role`, { role })
+}
+
+export async function forceStopSession(sessionId: number): Promise<void> {
+  await api.post(`/admin/sessions/${sessionId}/stop`)
+}
+
+export async function getUserProfile(userId: number): Promise<UserProfile> {
+  const { data } = await api.get(`/admin/users/${userId}/profile`)
+  return data
+}

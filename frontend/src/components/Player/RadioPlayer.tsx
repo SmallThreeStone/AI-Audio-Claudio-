@@ -6,17 +6,24 @@ import PlayerControls from './PlayerControls'
 import SleepTimer from './SleepTimer'
 import SpeakerSelector from './SpeakerSelector'
 import UpNext from './UpNext'
+import { useEffect } from 'react'
 
 const STAGES = [
   { key: 'analyzing', label: '分析心情' },
   { key: 'building', label: '精选歌曲' },
-  { key: 'fetching_urls', label: '加载链接' },
-  { key: 'synthesizing', label: '合成语音' },
+  { key: 'preparing', label: '加载 & 合成' },
 ]
 
 export default function RadioPlayer() {
-  const { session, isGenerating, currentItem, generationStage, generationMessage } = useStore()
+  const { session, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
   const { skip, skipTo, stop, togglePause, seek } = useRadioPlayer()
+
+  // Auto-clear notice after 3 seconds
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 3000)
+    return () => clearTimeout(timer)
+  }, [notice, setNotice])
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
 
@@ -75,6 +82,12 @@ export default function RadioPlayer() {
       {session?.weather_summary && (
         <div className="text-[11px] text-[var(--color-radio-muted)] bg-white/5 rounded-full px-3 py-0.5 backdrop-blur-sm">
           {session.weather_summary}
+        </div>
+      )}
+
+      {notice && (
+        <div className="text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full px-3 py-1 animate-pulse">
+          {notice}
         </div>
       )}
 

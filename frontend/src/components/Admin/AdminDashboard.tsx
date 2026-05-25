@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import {
   getAdminOverview, getAdminUsers, getAdminSessions, getAdminListening,
-  getAdminTrends, getAdminHourly,
+  getAdminTrends, getAdminHourly, getAdminAnomalies,
+  setUserRole, forceStopSession, getUserProfile,
   type AdminOverview, type AdminUser, type AdminSession, type AdminListenEvent,
-  type AdminTrend, type AdminHourly,
+  type AdminTrend, type AdminHourly, type AdminAnomaly, type UserProfile,
 } from '../../api/admin'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
-type Tab = 'users' | 'sessions' | 'listening'
+type Tab = 'users' | 'sessions' | 'listening' | 'anomalies'
 
 const statusBadge: Record<string, string> = {
   logged_in: 'bg-green-500/20 text-green-400',
@@ -35,7 +36,8 @@ const eventBadge: Record<string, string> = {
 }
 
 export default function AdminDashboard() {
-  const { setShowAdmin } = useStore()
+  const { setShowAdmin, user } = useStore()
+  const isOwner = user?.role === 'owner'
   const [activeTab, setActiveTab] = useState<Tab>('users')
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -43,7 +45,23 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState<AdminListenEvent[]>([])
   const [trends, setTrends] = useState<AdminTrend[]>([])
   const [hourly, setHourly] = useState<AdminHourly[]>([])
+  const [anomalies, setAnomalies] = useState<AdminAnomaly[]>([])
+  const [viewProfile, setViewProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const refreshData = () => {
+    Promise.all([
+      getAdminUsers(),
+      getAdminSessions(),
+      getAdminListening(),
+      getAdminAnomalies(),
+    ]).then(([us, ss, ev, an]) => {
+      setUsers(us)
+      setSessions(ss)
+      setEvents(ev)
+      setAnomalies(an.alerts)
+    }).catch(() => {})
+  }
 
   useEffect(() => {
     Promise.all([
@@ -53,15 +71,37 @@ export default function AdminDashboard() {
       getAdminListening(),
       getAdminTrends(),
       getAdminHourly(),
-    ]).then(([ov, us, ss, ev, tr, hr]) => {
+      getAdminAnomalies(),
+    ]).then(([ov, us, ss, ev, tr, hr, an]) => {
       setOverview(ov)
       setUsers(us)
       setSessions(ss)
       setEvents(ev)
       setTrends(tr)
       setHourly(hr)
+      setAnomalies(an.alerts)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
+
+  const handleSetRole = async (userId: number, role: string) => {
+    await setUserRole(userId, role)
+    refreshData()
+  }
+
+  const handleForceStop = async (sessionId: number) => {
+    if (!confirm('确定强制停止该会话吗？')) return
+    await forceStopSession(sessionId)
+    refreshData()
+  }
+
+  const handleViewProfile = async (userId: number) => {
+    try {
+      const profile = await getUserProfile(userId)
+      setViewProfile(profile)
+    } catch {
+      // 403 etc
+    }
+  }
 
   if (loading) {
     return (
@@ -71,10 +111,11 @@ export default function AdminDashboard() {
     )
   }
 
-  const tabs: { key: Tab; label: string }[] = [
+  const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: 'users', label: '用户管理' },
     { key: 'sessions', label: '会话记录' },
     { key: 'listening', label: '播放记录' },
+    { key: 'anomalies', label: '异常告警', badge: anomalies.length },
   ]
 
   return (
@@ -136,6 +177,11 @@ export default function AdminDashboard() {
               }`}
             >
               {t.label}
+              {t.badge != null && t.badge > 0 && (
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                  activeTab === t.key ? 'bg-white/20 text-white' : 'bg-[var(--color-radio-accent)]/20 text-[var(--color-radio-accent)]'
+                }`}>{t.badge}</span>
+              )}
             </button>
           ))}
         </div>
@@ -150,11 +196,83 @@ export default function AdminDashboard() {
                   <UserActivityChart users={users} />
                 </div>
               )}
-              <UsersTable users={users} />
+              <UsersTable users={users} isOwner={isOwner} onSetRole={handleSetRole} onViewProfile={handleViewProfile} />
             </>
           )}
-          {activeTab === 'sessions' && <SessionsTable sessions={sessions} />}
+          {activeTab === 'sessions' && <SessionsTable sessions={sessions} isOwner={isOwner} onForceStop={handleForceStop} />}
           {activeTab === 'listening' && <ListeningTable events={events} />}
+          {activeTab === 'anomalies' && <AnomaliesPanel alerts={anomalies} />}
+        </div>
+      </div>
+
+      {/* Profile Modal */}
+      {viewProfile && (
+        <ProfileModal profile={viewProfile} onClose={() => setViewProfile(null)} />
+      )}
+    </div>
+  )
+}
+
+function ProfileModal({ profile, onClose }: { profile: UserProfile; onClose: () => void }) {
+  const u = profile.user
+  const tp = profile.time_patterns
+  const total = tp.morning + tp.afternoon + tp.evening + tp.night || 1
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[var(--color-radio-surface)] border border-[var(--color-radio-border)] rounded-xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-[var(--color-radio-text)]">
+            {u.nickname || `#${u.id}`} 的画像
+          </h3>
+          <button onClick={onClose} className="text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]">✕</button>
+        </div>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[var(--color-radio-card)] rounded-lg p-3">
+              <div className="text-[var(--color-radio-muted)] text-xs">总播放</div>
+              <div className="text-xl font-bold text-[var(--color-radio-text)]">{profile.total_listens}</div>
+            </div>
+            <div className="bg-[var(--color-radio-card)] rounded-lg p-3">
+              <div className="text-[var(--color-radio-muted)] text-xs">总会话</div>
+              <div className="text-xl font-bold text-[var(--color-radio-text)]">{profile.session_count}</div>
+            </div>
+          </div>
+          {profile.genres.length > 0 && (
+            <div>
+              <div className="text-[var(--color-radio-muted)] text-xs mb-2">偏好风格</div>
+              <div className="flex flex-wrap gap-1">
+                {profile.genres.slice(0, 6).map(g => (
+                  <span key={g.name} className="text-xs bg-[var(--color-radio-card)] px-2 py-1 rounded-full text-[var(--color-radio-text)]">
+                    {g.name} ({g.count})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {profile.artists.length > 0 && (
+            <div>
+              <div className="text-[var(--color-radio-muted)] text-xs mb-2">最爱艺人</div>
+              <div className="flex flex-wrap gap-1">
+                {profile.artists.slice(0, 6).map(a => (
+                  <span key={a.name} className="text-xs bg-[var(--color-radio-card)] px-2 py-1 rounded-full text-[var(--color-radio-text)]">
+                    {a.name} ({a.count})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <div className="text-[var(--color-radio-muted)] text-xs mb-2">时段偏好</div>
+            <div className="flex h-6 rounded-full overflow-hidden bg-[var(--color-radio-card)]">
+              <div style={{ width: `${(tp.morning / total) * 100}%` }} className="bg-yellow-500/60" title={`早晨 ${tp.morning}`} />
+              <div style={{ width: `${(tp.afternoon / total) * 100}%` }} className="bg-orange-500/60" title={`下午 ${tp.afternoon}`} />
+              <div style={{ width: `${(tp.evening / total) * 100}%` }} className="bg-purple-500/60" title={`傍晚 ${tp.evening}`} />
+              <div style={{ width: `${(tp.night / total) * 100}%` }} className="bg-blue-500/60" title={`深夜 ${tp.night}`} />
+            </div>
+            <div className="flex justify-between text-[10px] text-[var(--color-radio-muted)] mt-1">
+              <span>早{tp.morning}</span><span>下{tp.afternoon}</span><span>晚{tp.evening}</span><span>夜{tp.night}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -171,7 +289,7 @@ function Card({ label, value, sub }: { label: string; value: number; sub?: strin
   )
 }
 
-function UsersTable({ users }: { users: AdminUser[] }) {
+function UsersTable({ users, isOwner, onSetRole, onViewProfile }: { users: AdminUser[]; isOwner: boolean; onSetRole: (id: number, role: string) => void; onViewProfile: (id: number) => void }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -183,6 +301,7 @@ function UsersTable({ users }: { users: AdminUser[] }) {
             <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">会话</th>
             <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">播放</th>
             <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">注册时间</th>
+            {isOwner && <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -195,11 +314,25 @@ function UsersTable({ users }: { users: AdminUser[] }) {
                 </div>
               </td>
               <td className="px-4 py-3">
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  u.role === 'admin' ? 'bg-[var(--color-radio-gold)]/20 text-[var(--color-radio-gold)]' : 'bg-gray-500/20 text-gray-400'
-                }`}>
-                  {u.role === 'admin' ? '管理员' : '用户'}
-                </span>
+                {isOwner && u.role !== 'owner' ? (
+                  <select
+                    value={u.role}
+                    onChange={(e) => onSetRole(u.id, e.target.value)}
+                    className={`text-xs px-2 py-0.5 rounded-full bg-transparent cursor-pointer ${
+                      u.role === 'admin' ? 'bg-[var(--color-radio-gold)]/20 text-[var(--color-radio-gold)]' : 'bg-gray-500/20 text-gray-400'
+                    }`}
+                  >
+                    <option value="user">用户</option>
+                    <option value="admin">管理员</option>
+                  </select>
+                ) : (
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    u.role === 'owner' ? 'bg-[var(--color-radio-accent)]/20 text-[var(--color-radio-accent)]' :
+                    u.role === 'admin' ? 'bg-[var(--color-radio-gold)]/20 text-[var(--color-radio-gold)]' : 'bg-gray-500/20 text-gray-400'
+                  }`}>
+                    {u.role === 'owner' ? '拥有者' : u.role === 'admin' ? '管理员' : '用户'}
+                  </span>
+                )}
               </td>
               <td className="px-4 py-3">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadge[u.login_status] || ''}`}>
@@ -211,6 +344,16 @@ function UsersTable({ users }: { users: AdminUser[] }) {
               <td className="px-4 py-3 text-right text-[var(--color-radio-muted)] text-xs">
                 {u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '-'}
               </td>
+              {isOwner && (
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => onViewProfile(u.id)}
+                    className="text-xs text-[var(--color-radio-accent)] hover:underline"
+                  >
+                    查看画像
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -219,7 +362,7 @@ function UsersTable({ users }: { users: AdminUser[] }) {
   )
 }
 
-function SessionsTable({ sessions }: { sessions: AdminSession[] }) {
+function SessionsTable({ sessions, isOwner, onForceStop }: { sessions: AdminSession[]; isOwner: boolean; onForceStop: (id: number) => void }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -231,6 +374,7 @@ function SessionsTable({ sessions }: { sessions: AdminSession[] }) {
             <th className="text-left px-4 py-3 text-[var(--color-radio-muted)] font-medium">状态</th>
             <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">进度</th>
             <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">时间</th>
+            {isOwner && <th className="text-right px-4 py-3 text-[var(--color-radio-muted)] font-medium">操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -250,6 +394,18 @@ function SessionsTable({ sessions }: { sessions: AdminSession[] }) {
               <td className="px-4 py-3 text-right text-[var(--color-radio-muted)] text-xs">
                 {s.created_at ? new Date(s.created_at).toLocaleString('zh-CN') : '-'}
               </td>
+              {isOwner && (
+                <td className="px-4 py-3 text-right">
+                  {(s.status === 'playing' || s.status === 'ready' || s.status === 'generating' || s.status === 'refilling') && (
+                    <button
+                      onClick={() => onForceStop(s.id)}
+                      className="text-xs text-[var(--color-radio-accent)] hover:underline"
+                    >
+                      强制停止
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -291,6 +447,41 @@ function ListeningTable({ events }: { events: AdminListenEvent[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function AnomaliesPanel({ alerts }: { alerts: AdminAnomaly[] }) {
+  if (alerts.length === 0) {
+    return (
+      <div className="p-6 text-center text-[var(--color-radio-muted)] text-sm">
+        暂无异常告警
+      </div>
+    )
+  }
+  return (
+    <div className="divide-y divide-[var(--color-radio-border)]">
+      {alerts.map((a, i) => (
+        <div key={i} className="p-4 hover:bg-white/5 transition-colors">
+          <div className="flex items-start gap-3">
+            <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+              a.level === 'warning' ? 'bg-[var(--color-radio-accent)]' : 'bg-[var(--color-radio-gold)]'
+            }`} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  a.level === 'warning' ? 'bg-[var(--color-radio-accent)]/20 text-[var(--color-radio-accent)]' : 'bg-[var(--color-radio-gold)]/20 text-[var(--color-radio-gold)]'
+                }`}>
+                  {a.level === 'warning' ? '警告' : '提示'}
+                </span>
+                <span className="text-sm font-medium text-[var(--color-radio-text)]">{a.title}</span>
+              </div>
+              <p className="text-sm text-[var(--color-radio-muted)] ml-0">{a.detail}</p>
+              <p className="text-xs text-[var(--color-radio-muted)]/60 mt-1">建议：{a.suggestion}</p>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
