@@ -199,6 +199,18 @@ export function useRadioPlayer() {
     [queue, playItem],
   )
 
+  const togglePause = useCallback(() => {
+    if (!howlRef.current) return
+    const store = useStore.getState()
+    if (store.isPlaying) {
+      howlRef.current.pause()
+      setIsPlaying(false)
+    } else {
+      howlRef.current.play()
+      setIsPlaying(true)
+    }
+  }, [setIsPlaying])
+
   const stop = useCallback(() => {
     if (howlRef.current) {
       howlRef.current.stop()
@@ -218,5 +230,5 @@ export function useRadioPlayer() {
     stopRadio()
   }, [setIsPlaying, setCurrentTime, setCurrentItem, setCurrentIndex, setQueue, setSession])
 
-  return { skip, skipTo, stop }
+  return { skip, skipTo, stop, togglePause }
 }

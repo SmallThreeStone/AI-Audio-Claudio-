@@ -16,7 +16,7 @@ const STAGES = [
 
 export default function RadioPlayer() {
   const { session, isGenerating, currentItem, generationStage, generationMessage } = useStore()
-  const { skip, skipTo, stop } = useRadioPlayer()
+  const { skip, skipTo, stop, togglePause } = useRadioPlayer()
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
 
@@ -80,7 +80,7 @@ export default function RadioPlayer() {
 
       <NowPlaying />
       <UpNext onSkipTo={skipTo} />
-      <PlayerControls onSkip={skip} onStop={stop} />
+      <PlayerControls onSkip={skip} onStop={stop} onTogglePause={togglePause} />
       <SpeakerSelector />
       <SleepTimer />
     </div>

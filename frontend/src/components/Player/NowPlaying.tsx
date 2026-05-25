@@ -2,7 +2,16 @@ import { useStore } from '../../store'
 import FeedbackButtons from './FeedbackButtons'
 
 export default function NowPlaying() {
-  const { currentItem, isPlaying } = useStore()
+  const { currentItem, isPlaying, isRestoring } = useStore()
+
+  if (isRestoring) {
+    return (
+      <div className="text-center py-2">
+        <div className="w-6 h-6 border-2 border-[var(--color-radio-accent)] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+        <p className="text-[var(--color-radio-muted)] text-sm">正在恢复电台...</p>
+      </div>
+    )
+  }
 
   if (!currentItem || currentItem.status === 'error' || currentItem.status === 'skipped') {
     return (

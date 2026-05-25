@@ -3,10 +3,11 @@ import { useStore } from '../../store'
 interface Props {
   onSkip: () => void
   onStop: () => void
+  onTogglePause: () => void
 }
 
-export default function PlayerControls({ onSkip, onStop }: Props) {
-  const { currentTime, duration, volume, session, setVolume, queue } = useStore()
+export default function PlayerControls({ onSkip, onStop, onTogglePause }: Props) {
+  const { currentTime, duration, volume, isPlaying, session, setVolume, queue } = useStore()
 
   const hasPlayableItems = queue.some(
     (item) => item.status !== 'error' && item.status !== 'skipped'
@@ -50,11 +51,28 @@ export default function PlayerControls({ onSkip, onStop }: Props) {
         </button>
 
         <button
-          onClick={onSkip}
+          onClick={onTogglePause}
           className="w-12 h-12 rounded-full bg-[var(--color-radio-accent)] flex items-center justify-center hover:bg-[var(--color-radio-accent-dim)] transition-colors"
+          title={isPlaying ? '暂停' : '播放'}
+        >
+          {isPlaying ? (
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
+        </button>
+
+        <button
+          onClick={onSkip}
+          className="w-10 h-10 rounded-full border border-[var(--color-radio-border)] flex items-center justify-center hover:border-[var(--color-radio-accent)] transition-colors"
           title="下一首"
         >
-          <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
         </button>

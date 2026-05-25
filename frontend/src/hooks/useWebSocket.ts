@@ -5,10 +5,11 @@ import { getQueue } from '../api/radio'
 import type { QueueItem, DJSession } from '../types'
 
 export function useWebSocket() {
-  const { setQueue, setCurrentIndex, setSession, setIsGenerating, setCurrentItem, setGenerationProgress } = useStore()
+  const { setQueue, setCurrentIndex, setSession, setIsGenerating, setCurrentItem, setGenerationProgress, setIsRestoring } = useStore()
 
   // Hydrate queue on mount (in case of page refresh mid-session)
   const hydrate = useCallback(async () => {
+    setIsRestoring(true)
     try {
       const data = await getQueue()
       if (data.session) {
@@ -24,6 +25,8 @@ export function useWebSocket() {
       }
     } catch {
       // silent - no active session
+    } finally {
+      setIsRestoring(false)
     }
   }, [])
 
