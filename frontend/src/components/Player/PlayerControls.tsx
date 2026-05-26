@@ -1,4 +1,5 @@
 import { useStore } from '../../store'
+import WaveProgressBar from './WaveProgressBar'
 
 interface Props {
   onSkip: () => void
@@ -9,48 +10,17 @@ interface Props {
 }
 
 export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePause, onSeek }: Props) {
-  const { currentTime, duration, volume, isPlaying, session, setVolume, queue, playHistory } = useStore()
+  const { volume, isPlaying, isAudioLoading, session, setVolume, queue, playHistory } = useStore()
 
   const hasPlayableItems = queue.some(
     (item) => item.status !== 'error' && item.status !== 'skipped'
   )
   if (!session || !hasPlayableItems) return null
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (duration <= 0) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    onSeek(ratio * duration)
-  }
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = Math.floor(s % 60)
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
-
   return (
     <div className="w-full space-y-3">
-      {/* Progress bar */}
-      <div className="space-y-1">
-        <div
-          className="h-4 -mx-2 py-2 cursor-pointer group"
-          onClick={handleSeek}
-        >
-          <div className="h-1 bg-[var(--color-radio-border)] rounded-full overflow-hidden group-hover:h-1.5 transition-all">
-            <div
-              className="h-full bg-[var(--color-radio-accent)] rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-        <div className="flex justify-between text-xs text-[var(--color-radio-muted)]">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
+      {/* Wave progress bar */}
+      <WaveProgressBar onSeek={onSeek} />
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-3 sm:gap-4">
@@ -77,10 +47,13 @@ export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePau
 
         <button
           onClick={onTogglePause}
-          className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--color-radio-accent)] flex items-center justify-center hover:bg-[var(--color-radio-accent-dim)] transition-colors"
-          title={isPlaying ? '暂停' : '播放'}
+          disabled={isAudioLoading}
+          className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--color-radio-accent)] flex items-center justify-center hover:bg-[var(--color-radio-accent-dim)] transition-colors disabled:opacity-70"
+          title={isAudioLoading ? '正在加载...' : isPlaying ? '暂停' : '播放'}
         >
-          {isPlaying ? (
+          {isAudioLoading ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : isPlaying ? (
             <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
               <rect x="6" y="4" width="4" height="16" rx="1" />
               <rect x="14" y="4" width="4" height="16" rx="1" />

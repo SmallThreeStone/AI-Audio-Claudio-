@@ -15,6 +15,16 @@ export async function getAuthStatus() {
   return data as { logged_in: boolean; user_id?: number; client_id?: string; nickname?: string; avatar_url?: string; role?: string }
 }
 
+export async function phoneLogin(phone: string, password: string, countrycode?: string, captcha?: string) {
+  const { data } = await api.post('/auth/login/phone', { phone, password, countrycode, captcha })
+  return data as { code: number; message: string; nickname?: string; avatar_url?: string; role?: string; user_id?: number; client_id?: string }
+}
+
+export async function sendCaptcha(phone: string, countrycode?: string) {
+  const { data } = await api.post('/auth/login/phone/captcha', { phone, countrycode })
+  return data as { code: number; message: string }
+}
+
 export async function logout() {
   await api.post('/auth/logout')
 }

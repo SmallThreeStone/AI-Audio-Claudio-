@@ -67,16 +67,28 @@ async def qr_status(request: Request, key: str, session: AsyncSession = Depends(
         cookies = cookie_str
         cookie_dict = _parse_cookie_string(cookies)
 
-        # Get user info from Netease
-        account = await netease.user_account(cookie_dict)
-        profile = account.get("profile", {})
+        # Get user info from Netease (with retry — session may need a moment to activate)
+        profile = {}
+        for attempt in range(3):
+            try:
+                account = await netease.user_account(cookie_dict)
+                profile = account.get("profile", {})
+                if profile:
+                    break
+            except Exception:
+                if attempt == 2:
+                    logger.warning(f"user_account failed after 3 retries for user_id={user_id}, saving cookies anyway")
+                else:
+                    import asyncio
+                    await asyncio.sleep(1.0)
 
         result_set = await session.execute(select(User).where(User.id == user_id))
         user = result_set.scalar()
         if user:
-            user.netease_uid = str(profile.get("userId", ""))
-            user.nickname = profile.get("nickname")
-            user.avatar_url = profile.get("avatarUrl")
+            raw_uid = profile.get("userId")
+            user.netease_uid = int(raw_uid) if raw_uid else None
+            user.nickname = profile.get("nickname") or (user.nickname or "")
+            user.avatar_url = profile.get("avatarUrl") or user.avatar_url
             user.cookies_json = json.dumps(cookie_dict)
             user.login_status = "logged_in"
             user.qr_key = None
@@ -93,14 +105,117 @@ async def qr_status(request: Request, key: str, session: AsyncSession = Depends(
             return {
                 "code": 803,
                 "message": "登录成功",
-                "nickname": profile.get("nickname"),
-                "avatar_url": profile.get("avatarUrl"),
+                "nickname": user.nickname,
+                "avatar_url": user.avatar_url,
                 "role": user.role,
                 "user_id": user.id,
                 "client_id": user.client_id,
             }
 
     return {"code": code, "message": message}
+
+
+@router.post("/login/phone/captcha")
+async def send_captcha(request: Request):
+    """Send SMS verification code to phone number."""
+    user_id = _get_user_id(request)
+    if not user_id:
+        return {"code": 400, "message": "Missing client identity"}
+
+    body = await request.json()
+    phone = (body.get("phone") or "").strip()
+    countrycode = (body.get("countrycode") or "86").strip()
+
+    if not phone:
+        return {"code": 400, "message": "请输入手机号"}
+
+    try:
+        result = await netease.captcha_sent(phone, countrycode)
+    except Exception as e:
+        logger.error(f"Captcha send failed: {e}")
+        return {"code": 500, "message": "验证码发送失败，请稍后重试"}
+
+    captcha_code = result.get("code", result.get("body", {}).get("code", 500))
+    if captcha_code == 200:
+        return {"code": 200, "message": "验证码已发送"}
+    else:
+        msg = result.get("message") or result.get("body", {}).get("message") or "验证码发送失败"
+        return {"code": captcha_code, "message": msg}
+
+
+@router.post("/login/phone")
+async def phone_login(request: Request, session: AsyncSession = Depends(get_session)):
+    """Login with phone number + password or captcha."""
+    user_id = _get_user_id(request)
+    if not user_id:
+        return {"code": 400, "message": "Missing client identity"}
+
+    body = await request.json()
+    phone = (body.get("phone") or "").strip()
+    password = (body.get("password") or "").strip()
+    captcha = (body.get("captcha") or "").strip()
+    countrycode = (body.get("countrycode") or "86").strip()
+
+    if not phone:
+        return {"code": 400, "message": "请输入手机号"}
+    if not captcha and not password:
+        return {"code": 400, "message": "请输入密码或验证码"}
+
+    try:
+        result = await netease.phone_login(phone, password, countrycode, captcha)
+    except Exception as e:
+        logger.error(f"Phone login failed: {e}")
+        return {"code": 500, "message": "登录服务异常，请稍后重试"}
+
+    body_data = result.get("body", {})
+    code = body_data.get("code", result.get("code", 500))
+
+    if code != 200:
+        msg = result.get("message") or result.get("msg") or body_data.get("message") or body_data.get("msg") or "登录失败"
+        return {"code": code, "message": msg}
+
+    cookie_str = body_data.get("cookie", "")
+    if not cookie_str and "cookie" in result:
+        c = result["cookie"]
+        cookie_str = ";".join(c) if isinstance(c, list) else str(c)
+
+    if not cookie_str:
+        return {"code": 500, "message": "登录成功但未获取到凭证，请重试"}
+
+    cookie_dict = _parse_cookie_string(cookie_str)
+    profile = body_data.get("profile", {})
+    account = body_data.get("account", {})
+
+    result_set = await session.execute(select(User).where(User.id == user_id))
+    user = result_set.scalar()
+    if user:
+        raw_uid = profile.get("userId") or account.get("id")
+        user.netease_uid = int(raw_uid) if raw_uid else None
+        user.nickname = profile.get("nickname") or (user.nickname or "")
+        user.avatar_url = profile.get("avatarUrl") or user.avatar_url
+        user.cookies_json = json.dumps(cookie_dict)
+        user.login_status = "logged_in"
+
+        # Auto-promote first user to admin
+        if user.role != "admin":
+            from sqlalchemy import func
+            count = (await session.execute(select(func.count()).select_from(User))).scalar() or 0
+            if count <= 1:
+                user.role = "admin"
+
+        await session.commit()
+
+        return {
+            "code": 200,
+            "message": "登录成功",
+            "nickname": user.nickname,
+            "avatar_url": user.avatar_url,
+            "role": user.role,
+            "user_id": user.id,
+            "client_id": user.client_id,
+        }
+
+    return {"code": 500, "message": "用户不存在"}
 
 
 @router.get("/status")
@@ -145,12 +260,17 @@ async def logout(request: Request, session: AsyncSession = Depends(get_session))
     return {"status": "ok"}
 
 
+_COOKIE_ATTRS = {"path", "httponly", "secure", "expires", "domain", "samesite", "max-age"}
+
 def _parse_cookie_string(cookie_str: str) -> dict:
-    """Parse 'MUSIC_U=xxx; __csrf=yyy' into dict."""
+    """Parse 'MUSIC_U=xxx; __csrf=yyy' into dict, filtering cookie attributes."""
     cookies = {}
     for part in cookie_str.split(";"):
         part = part.strip()
         if "=" in part:
             k, v = part.split("=", 1)
-            cookies[k.strip()] = v.strip()
+            k = k.strip()
+            if k.lower() in _COOKIE_ATTRS:
+                continue
+            cookies[k] = v.strip()
     return cookies

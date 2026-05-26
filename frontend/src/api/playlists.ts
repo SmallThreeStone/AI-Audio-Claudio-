@@ -8,5 +8,5 @@ export async function getPlaylists() {
 
 export async function syncPlaylists() {
   const { data } = await api.post('/playlists/sync')
-  return data as { synced: number; new_songs: number; enriched: number }
+  return data as { synced: number; new_songs: number; enriched: number; error?: string }
 }

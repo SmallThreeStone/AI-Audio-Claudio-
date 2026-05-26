@@ -1,4 +1,6 @@
 import json
+import datetime
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -8,25 +10,34 @@ from ..models.song import Song
 from ..models.playlist_song import playlist_song_table
 from ..services.netease_client import netease
 
+logger = logging.getLogger(__name__)
+
 
 async def sync_all_playlists(db: AsyncSession, user: User):
     cookies = json.loads(user.cookies_json or "{}")
-    if not user.netease_uid:
-        return {"synced": 0, "new_songs": 0}
+    if not user.netease_uid or not cookies:
+        return {"error": "请先登录网易云账号", "synced": 0, "new_songs": 0}
 
-    # Fetch liked song list ID
+    # Fetch liked song list
     liked_data = await netease.like_list(user.netease_uid, cookies)
-    liked_ids = set(liked_data.get("ids", []))
 
     # Fetch all playlists
     playlist_data = await netease.user_playlist(user.netease_uid, cookies)
+    if playlist_data.get("code") and playlist_data["code"] != 200:
+        logger.warning(f"user_playlist error for uid={user.netease_uid}: code={playlist_data.get('code')}")
+        return {"error": "获取歌单失败，登录可能已过期，请重新登录", "synced": 0, "new_songs": 0}
+
     playlists = playlist_data.get("playlist", [])
+    if not playlists:
+        return {"synced": 0, "new_songs": 0}
+
     synced_count = 0
     total_new_songs = 0
 
     for pl_data in playlists:
         pl_id = pl_data["id"]
-        is_liked = pl_id in liked_ids
+        # Netease marks the liked-songs playlist with specialType=5
+        is_liked = pl_data.get("specialType") == 5
 
         # Upsert playlist (filtered by both netease ID and user_id)
         result = await db.execute(
@@ -45,12 +56,14 @@ async def sync_all_playlists(db: AsyncSession, user: User):
                 cover_url=pl_data.get("coverImgUrl"),
                 song_count=pl_data.get("trackCount", 0),
                 is_liked=is_liked,
+                last_synced=datetime.datetime.utcnow(),
             )
             db.add(playlist)
         else:
             playlist.name = pl_data["name"]
             playlist.song_count = pl_data.get("trackCount", 0)
             playlist.cover_url = pl_data.get("coverImgUrl")
+            playlist.last_synced = datetime.datetime.utcnow()
 
         await db.flush()
 

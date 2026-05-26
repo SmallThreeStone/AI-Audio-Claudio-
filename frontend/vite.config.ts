@@ -44,12 +44,13 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: /^\/api\/audio\/music\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'audio-cache',
+              networkTimeoutSeconds: 5,
               expiration: {
                 maxEntries: 30,
-                maxAgeSeconds: 60 * 60 * 24 * 7,
+                maxAgeSeconds: 60 * 60,
               },
             },
           },

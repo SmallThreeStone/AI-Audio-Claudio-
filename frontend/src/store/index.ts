@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { User, Playlist, QueueItem, DJSession, DlnaDevice } from '../types'
+import type { User, Playlist, QueueItem, DJSession, DlnaDevice, LyricLine } from '../types'
 
 interface AuthSlice {
   user: User | null
@@ -20,19 +20,29 @@ interface PlaylistSlice {
 
 interface PlayerSlice {
   isPlaying: boolean
+  isAudioLoading: boolean
   currentItem: QueueItem | null
   currentTime: number
   duration: number
   volume: number
   playHistory: QueueItem[]
   previousItem: QueueItem | null
+  frequencyData: Uint8Array
+  lowFreqEnergy: number
+  lyrics: LyricLine[]
+  activeLyricIndex: number
   setIsPlaying: (playing: boolean) => void
+  setIsAudioLoading: (loading: boolean) => void
   setCurrentItem: (item: QueueItem | null) => void
   setCurrentTime: (time: number) => void
   setDuration: (duration: number) => void
   setVolume: (volume: number) => void
   addToHistory: (item: QueueItem) => void
   clearHistory: () => void
+  setFrequencyData: (data: Uint8Array) => void
+  setLowFreqEnergy: (energy: number) => void
+  setLyrics: (lyrics: LyricLine[]) => void
+  setActiveLyricIndex: (index: number) => void
 }
 
 interface QueueSlice {
@@ -97,13 +107,19 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
 
   // Player
   isPlaying: false,
+  isAudioLoading: false,
   currentItem: null,
   currentTime: 0,
   duration: 0,
   volume: 0.8,
   playHistory: [],
   previousItem: null,
+  frequencyData: new Uint8Array(128),
+  lowFreqEnergy: 0,
+  lyrics: [],
+  activeLyricIndex: -1,
   setIsPlaying: (isPlaying) => set({ isPlaying }),
+  setIsAudioLoading: (isAudioLoading) => set({ isAudioLoading }),
   setCurrentItem: (currentItem) => set({ currentItem }),
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),
@@ -115,6 +131,10 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
     return { playHistory: [item, ...s.playHistory].slice(0, 50), previousItem: item }
   }),
   clearHistory: () => set({ playHistory: [], previousItem: null }),
+  setFrequencyData: (frequencyData) => set({ frequencyData }),
+  setLowFreqEnergy: (lowFreqEnergy) => set({ lowFreqEnergy }),
+  setLyrics: (lyrics) => set({ lyrics }),
+  setActiveLyricIndex: (activeLyricIndex) => set({ activeLyricIndex }),
 
   // Queue
   queue: [],

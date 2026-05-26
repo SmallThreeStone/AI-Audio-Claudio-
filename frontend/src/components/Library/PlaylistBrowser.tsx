@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../../store'
 import { getPlaylists, syncPlaylists } from '../../api/playlists'
+import { getAuthStatus } from '../../api/auth'
 
 const GENRE_TAGS = ['全部', '华语', '欧美', '日语', '韩语', '电子', '摇滚', '轻音乐', '说唱', '民谣']
 
@@ -24,7 +25,7 @@ function matchGenre(pl: { name: string; description?: string }, tag: string): bo
 }
 
 export default function PlaylistBrowser() {
-  const { playlists, setPlaylists } = useStore()
+  const { playlists, setPlaylists, user, setNotice } = useStore()
   const [syncing, setSyncing] = useState(false)
   const [activeTag, setActiveTag] = useState('全部')
 
@@ -42,12 +43,37 @@ export default function PlaylistBrowser() {
   }
 
   const handleSync = async () => {
+    // Pre-check: user must be logged into Netease
+    if (!user || user.login_status !== 'logged_in') {
+      setNotice('请先登录网易云账号')
+      return
+    }
+
+    // Double-check server-side (cookies may have expired)
+    try {
+      const status = await getAuthStatus()
+      if (!status.logged_in) {
+        setNotice('网易云登录已过期，请重新扫码登录')
+        return
+      }
+    } catch {
+      setNotice('网络异常，请稍后重试')
+      return
+    }
+
     setSyncing(true)
     try {
-      await syncPlaylists()
-      await loadPlaylists()
-    } catch (e) {
-      if (import.meta.env.DEV) console.error('Sync failed:', e)
+      const result = await syncPlaylists()
+      if (result.error) {
+        setNotice(result.error)
+      } else if (result.synced === 0) {
+        setNotice('未发现新歌单，请确认网易云账号中有歌单')
+      } else {
+        setNotice(`导入成功！${result.synced} 个歌单，${result.new_songs} 首歌曲`)
+        await loadPlaylists()
+      }
+    } catch {
+      setNotice('同步失败，请确保后端服务已启动')
     }
     setSyncing(false)
   }

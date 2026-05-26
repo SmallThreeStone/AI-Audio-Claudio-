@@ -105,6 +105,15 @@ function MainApp() {
             role: (data.role as 'admin' | 'user') || 'user',
           })
         }
+        // Use client_id from response so LoginModal can start QR immediately
+        else if (data.user_id) {
+          setUser({
+            id: data.user_id,
+            client_id: data.client_id || clientId || undefined,
+            login_status: 'pending',
+            role: 'user',
+          })
+        }
       })
       .catch(() => {})
       .finally(() => setChecking(false))

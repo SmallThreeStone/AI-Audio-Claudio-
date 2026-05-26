@@ -20,7 +20,7 @@ cd ../frontend && npm install
 # DEEPSEEK_API_KEY=sk-...
 
 # 3. 启动侧车（网易云 API）
-node node_modules/@neteasecloudmusicapienhanced/api/main.js
+node node_modules/@neteasecloudmusicapienhanced/api/app.js
 # 默认监听 http://localhost:3000
 
 # 4. 启动后端（监听所有网络接口，支持局域网访问）

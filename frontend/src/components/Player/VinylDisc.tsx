@@ -1,14 +1,39 @@
 import { useStore } from '../../store'
+import { useEffect, useRef } from 'react'
 
 export default function VinylDisc() {
-  const { isPlaying, currentItem } = useStore()
+  const { isPlaying, isAudioLoading, currentItem } = useStore()
 
   const coverUrl = currentItem?.cover_url
   const isIdle = !currentItem
+  const containerRef = useRef<HTMLDivElement>(null)
+  const prevItemIdRef = useRef<number | null>(null)
+
+  // Song transition: scale bounce on song change
+  useEffect(() => {
+    const itemId = currentItem?.id ?? null
+    if (itemId && prevItemIdRef.current !== null && itemId !== prevItemIdRef.current) {
+      const el = containerRef.current
+      if (el) {
+        el.style.transition = 'transform 0.15s ease-in'
+        el.style.transform = 'scale(0.9)'
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            el.style.transition = 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)'
+            el.style.transform = ''
+          })
+        })
+      }
+    }
+    prevItemIdRef.current = itemId
+  }, [currentItem?.id])
 
   return (
-    <div className={`relative transition-all duration-500 ${isIdle ? 'opacity-40 scale-75' : 'opacity-100'}`}>
-      <div className={`vinyl-disc ${isPlaying ? 'playing' : 'paused'}`}>
+    <div
+      ref={containerRef}
+      className={`relative transition-all duration-500 vinyl-container ${isIdle ? 'opacity-40 scale-75' : 'opacity-100'}`}
+    >
+      <div className={`vinyl-disc ${isAudioLoading ? 'animate-pulse' : isPlaying ? 'playing' : 'paused'}`}>
         {coverUrl ? (
           <img
             src={coverUrl}

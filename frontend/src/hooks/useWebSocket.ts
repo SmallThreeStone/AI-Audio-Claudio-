@@ -5,7 +5,7 @@ import { getQueue } from '../api/radio'
 import type { QueueItem, DJSession } from '../types'
 
 export function useWebSocket() {
-  const { user, setQueue, setCurrentIndex, setSession, setIsGenerating, setCurrentItem, setGenerationProgress, setIsRestoring } = useStore()
+  const { user, setQueue, setCurrentIndex, setSession, setIsGenerating, setCurrentItem, setGenerationProgress, setIsRestoring, setNotice } = useStore()
 
   // Hydrate queue on mount (in case of page refresh mid-session)
   const hydrate = useCallback(async () => {
@@ -31,8 +31,11 @@ export function useWebSocket() {
   }, [])
 
   useEffect(() => {
+    // Wait until we have a real user ID before connecting
+    const userId = user?.id
+    if (!userId) return
+
     hydrate()
-    const userId = user?.id || 0
     radioWS.connect(userId)
 
     const unsub1 = radioWS.on('queue_update', (msg) => {
@@ -71,7 +74,9 @@ export function useWebSocket() {
     })
 
     const unsub4 = radioWS.on('error', (msg) => {
-      if (import.meta.env.DEV) console.warn('[WS] Error:', msg.message)
+      console.warn('[WS] Error:', msg.message, 'queue_item_id:', msg.queue_item_id)
+      const errMsg = msg.message || '歌曲加载失败'
+      setNotice(`${errMsg}，即将播放下一首`)
     })
 
     const unsub5 = radioWS.on('generation_progress', (msg) => {

@@ -2,7 +2,7 @@ import { useStore } from '../../store'
 import FeedbackButtons from './FeedbackButtons'
 
 export default function NowPlaying() {
-  const { currentItem, isPlaying, isRestoring } = useStore()
+  const { currentItem, isPlaying, isAudioLoading, isRestoring } = useStore()
 
   if (isRestoring) {
     return (
@@ -33,7 +33,7 @@ export default function NowPlaying() {
   const displayText = currentItem.tts_text || currentItem.intro_text
 
   return (
-    <div className="text-center space-y-1 min-h-[80px] flex flex-col justify-center">
+    <div className="text-center space-y-1 min-h-[80px] flex flex-col justify-center glass-panel rounded-xl px-3 py-2">
       {isTTS ? (
         <div className="dj-text-enter">
           <div className="flex items-center justify-center gap-2 mb-1">
@@ -48,7 +48,9 @@ export default function NowPlaying() {
       ) : (
         <div className="dj-text-enter">
           <p className="text-xs text-[var(--color-radio-muted)]">
-            {isPlaying ? 'Now Playing' : 'Up Next'}
+            {isAudioLoading ? (
+              <span className="animate-pulse">正在加载音频...</span>
+            ) : isPlaying ? 'Now Playing' : 'Up Next'}
           </p>
           <p className="text-base font-semibold truncate">
             {currentItem.song_name || '未知歌曲'}

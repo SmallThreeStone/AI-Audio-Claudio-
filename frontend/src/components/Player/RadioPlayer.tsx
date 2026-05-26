@@ -1,6 +1,9 @@
 import { useStore } from '../../store'
 import { useRadioPlayer } from '../../hooks/useRadioPlayer'
 import VinylDisc from './VinylDisc'
+import AudioWaveform from './AudioWaveform'
+import LyricPanel from './LyricPanel'
+import AmbientBackground from './AmbientBackground'
 import NowPlaying from './NowPlaying'
 import PlayerControls from './PlayerControls'
 import SleepTimer from './SleepTimer'
@@ -30,7 +33,11 @@ export default function RadioPlayer() {
 
   return (
     <div className="w-full max-w-md flex flex-col items-center gap-3 sm:gap-4">
-      <VinylDisc />
+      <AmbientBackground />
+      <div className="relative vinyl-stage">
+        <VinylDisc />
+        <AudioWaveform />
+      </div>
 
       {isGenerating && (
         <div className="w-full space-y-2">
@@ -93,6 +100,7 @@ export default function RadioPlayer() {
       )}
 
       <NowPlaying />
+      <LyricPanel />
       <UpNext onSkipTo={skipTo} />
       <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
       <PlayHistory />

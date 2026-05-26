@@ -4,7 +4,7 @@ export interface User {
   netease_uid?: number
   nickname?: string
   avatar_url?: string
-  login_status: 'logged_out' | 'qr_pending' | 'logged_in'
+  login_status: 'logged_out' | 'pending' | 'qr_pending' | 'logged_in'
   role?: 'admin' | 'user' | 'owner'
 }
 
@@ -111,6 +111,11 @@ export interface DlnaDevice {
   name: string
   location: string
   manufacturer: string
+}
+
+export interface LyricLine {
+  time: number
+  text: string
 }
 
 export type WSMessageType =
