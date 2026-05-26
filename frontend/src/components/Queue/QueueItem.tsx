@@ -1,12 +1,14 @@
 import type { QueueItem as QueueItemType } from '../../types'
 
-export default function QueueItem({ item, isCurrent }: { item: QueueItemType; isCurrent: boolean }) {
+export default function QueueItem({ item, isCurrent, compact }: { item: QueueItemType; isCurrent: boolean; compact?: boolean }) {
   const isTTS = item.item_type.startsWith('tts')
   const isError = item.status === 'error'
 
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+      className={`flex items-center gap-2 rounded-lg transition-colors ${
+        compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'
+      } ${
         isCurrent
           ? 'bg-[var(--color-radio-accent)]/10 border border-[var(--color-radio-accent)]/20'
           : isError

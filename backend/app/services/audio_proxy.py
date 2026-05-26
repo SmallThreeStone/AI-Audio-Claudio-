@@ -24,6 +24,9 @@ def _utcnow():
 async def _refresh_url_background(song_id: int, user_id: int):
     """Fetch a fresh streaming URL in the background, independent of the request cycle."""
     try:
+        # F22: Small delay so the main request's DB write completes first,
+        # reducing SQLite lock conflicts on the same row.
+        await asyncio.sleep(2)
         async with async_session_factory() as session:
             result = await session.execute(select(Song).where(Song.id == song_id))
             song = result.scalar()
@@ -105,48 +108,56 @@ async def get_song_url(db: AsyncSession, song_id: int, user_id: int | None = Non
 
     cookies = json.loads(user.cookies_json or "{}")
 
-    try:
-        url_data = await netease.song_url(song.netease_song_id, cookies)
-    except Exception as e:
-        logger.error("[AudioProxy] Netease API error: song_id=%d netease_id=%d error=%s",
-                     song_id, song.netease_song_id, e, exc_info=True)
+    # F23: Retry helper — one retry on sidecar HTTP errors
+    async def fetch_with_retry(sid: int, ck: dict, bitrate: int, max_retries: int = 2) -> dict | None:
+        for attempt in range(max_retries):
+            try:
+                return await netease.song_url(sid, ck, br=bitrate)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning("[AudioProxy] Retry %d/%d for song_id=%d br=%d: %s",
+                                   attempt + 1, max_retries, song_id, bitrate, e)
+                    await asyncio.sleep(0.5)
+                else:
+                    logger.error("[AudioProxy] Netease API error after %d retries: song_id=%d br=%d error=%s",
+                                 max_retries, song_id, bitrate, e)
         return None
 
-    urls = url_data.get("data", [])
-    if not urls:
-        logger.warning("[AudioProxy] Netease returned empty data: song_id=%d netease_id=%d",
-                       song_id, song.netease_song_id)
-        song.has_playable_url = False
-        song.cached_stream_url = None
-        await db.commit()
-        return None
+    # F7: Try 320kbps first, fall back to 128kbps if unavailable
+    url = None
+    for br in (320000, 128000):
+        url_data = await fetch_with_retry(song.netease_song_id, cookies, br)
+        if not url_data:
+            continue
 
-    url_info = urls[0]
-    url = url_info.get("url")
-    free_trial = url_info.get("freeTrialInfo")
-
-    if free_trial:
-        logger.warning("[AudioProxy] Netease returned PREVIEW CLIP (freeTrialInfo present): "
-                       "song_id=%d netease_id=%d br=%s level=%s",
-                       song_id, song.netease_song_id,
-                       url_info.get("br"), url_info.get("level"))
-        song.has_playable_url = False
-        song.cached_stream_url = None
-        await db.commit()
-        return None
+        urls = url_data.get("data", [])
+        if urls and urls[0].get("url") and not urls[0].get("freeTrialInfo"):
+            url = urls[0]["url"]
+            logger.info("[AudioProxy] Netease URL OK: song_id=%d netease_id=%d br=%s (tried br=%d)",
+                        song_id, song.netease_song_id, urls[0].get("br"), br)
+            break
+        elif br == 320000:
+            logger.info("[AudioProxy] 320k failed for song_id=%d, retrying 128k", song_id)
 
     if url:
-        logger.info("[AudioProxy] Netease URL OK: song_id=%d netease_id=%d br=%s",
-                    song_id, song.netease_song_id, url_info.get("br"))
+        # Cache the successful result
         song.cached_stream_url = url
         song.last_url_fetch = _utcnow()
         song.has_playable_url = True
         await db.commit()
         return url
 
-    logger.warning("[AudioProxy] Netease returned no URL: song_id=%d netease_id=%d br=%s level=%s",
-                   song_id, song.netease_song_id, url_info.get("br"), url_info.get("level"))
+    # Both bitrates failed — but don't mark as permanently unplayable if the
+    # user has no Netease cookies. VIP songs always return freeTrial without auth.
+    if not cookies:
+        logger.warning("[AudioProxy] All bitrates failed (no cookies): song_id=%d netease_id=%d — not marking unplayable",
+                       song_id, song.netease_song_id)
+        return None
+
+    logger.warning("[AudioProxy] All bitrates failed: song_id=%d netease_id=%d",
+                   song_id, song.netease_song_id)
     song.has_playable_url = False
     song.cached_stream_url = None
+    song.last_url_fetch = _utcnow()
     await db.commit()
     return None

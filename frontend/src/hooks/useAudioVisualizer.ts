@@ -12,6 +12,9 @@ export function useAudioVisualizer() {
   const rafRef = useRef<number>(0)
   const attachedElRef = useRef<HTMLAudioElement | null>(null)
   const resumeAttemptedRef = useRef(false)
+  const resumePromiseRef = useRef<Promise<void> | null>(null)  // F9: track pending resume
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)  // F19: idle stop
+  const runningRef = useRef(false)  // F19: track if rAF loop is active
 
   const [frequencyData, setFrequencyData] = useState<Uint8Array>(new Uint8Array(128))
   const [lowFreqEnergy, setLowFreqEnergy] = useState(0)
@@ -30,16 +33,23 @@ export function useAudioVisualizer() {
     audioCtxRef.current = ctx
     analyserRef.current = analyser
 
-    // Try to resume immediately (may work if there was prior user gesture)
-    if (ctx.state === 'suspended') {
-      ctx.resume().catch(() => {})
+    // F9: Track pending resume promise to avoid createMediaElementSource race
+    const doResume = () => {
+      if (ctx.state === 'suspended' && !resumePromiseRef.current) {
+        resumePromiseRef.current = ctx.resume().then(() => {
+          resumePromiseRef.current = null
+        }).catch(() => {
+          resumePromiseRef.current = null
+        })
+      }
     }
+
+    // Try to resume immediately (may work if there was prior user gesture)
+    doResume()
 
     // Also resume on first user interaction (click / touch / key)
     const resumeOnInteraction = () => {
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {})
-      }
+      doResume()
       if (ctx.state === 'running') {
         document.removeEventListener('click', resumeOnInteraction)
         document.removeEventListener('touchstart', resumeOnInteraction)
@@ -73,11 +83,16 @@ export function useAudioVisualizer() {
     const analyser = analyserRef.current
     if (!ctx || !analyser) return
 
-    // CRITICAL: Do NOT call createMediaElementSource while context is suspended.
-    // It would instantly reroute audio through a non-running graph → silence.
-    // Instead, resume the context and wait until next frame.
+    // F9: If a resume is in progress, wait for it before trying to attach.
+    // Otherwise createMediaElementSource may reroute audio through a suspended graph.
     if (ctx.state !== 'running') {
-      ctx.resume().catch(() => {})
+      if (resumePromiseRef.current) {
+        resumePromiseRef.current.then(() => {
+          // Retry on next frame after resume completes
+        })
+      } else {
+        ctx.resume().catch(() => {})
+      }
       return
     }
 
@@ -101,41 +116,66 @@ export function useAudioVisualizer() {
     }
   }, [])
 
-  // Animation loop
+  // Animation loop — F19: stops completely after 30s of idle (not playing/loading)
+  const IDLE_STOP_MS = 30_000
+
   useEffect(() => {
     const analyser = analyserRef.current
     const bufferLength = analyser?.frequencyBinCount || 128
 
     let lastFrameTime = 0
     const IDLE_FPS = 4
+    let idleSince = 0
 
-    const loop = (timestamp: number) => {
-      tryAttach()
+    const startLoop = () => {
+      if (runningRef.current) return
+      runningRef.current = true
 
-      if (analyser && audioCtxRef.current?.state === 'running') {
-        const data = new Uint8Array(bufferLength)
-        analyser.getByteFrequencyData(data)
-        setFrequencyData(data)
-
-        const lowBins = Math.floor(bufferLength / 4)
-        let sum = 0
-        for (let i = 0; i < lowBins; i++) sum += data[i]
-        setLowFreqEnergy(sum / (lowBins * 255))
-      }
-
-      if (!isPlaying && !isAudioLoading) {
-        if (timestamp - lastFrameTime < 1000 / IDLE_FPS) {
-          rafRef.current = requestAnimationFrame(loop)
-          return
+      const loop = (timestamp: number) => {
+        // F19: Check if we should stop the loop entirely
+        if (!isPlaying && !isAudioLoading) {
+          if (!idleSince) idleSince = timestamp
+          else if (timestamp - idleSince > IDLE_STOP_MS) {
+            runningRef.current = false
+            return // Stop loop completely
+          }
+        } else {
+          idleSince = 0
         }
-        lastFrameTime = timestamp
+
+        tryAttach()
+
+        if (analyser && audioCtxRef.current?.state === 'running') {
+          const data = new Uint8Array(bufferLength)
+          analyser.getByteFrequencyData(data)
+          setFrequencyData(data)
+
+          const lowBins = Math.floor(bufferLength / 4)
+          let sum = 0
+          for (let i = 0; i < lowBins; i++) sum += data[i]
+          setLowFreqEnergy(sum / (lowBins * 255))
+        }
+
+        if (!isPlaying && !isAudioLoading) {
+          if (timestamp - lastFrameTime < 1000 / IDLE_FPS) {
+            rafRef.current = requestAnimationFrame(loop)
+            return
+          }
+          lastFrameTime = timestamp
+        }
+
+        rafRef.current = requestAnimationFrame(loop)
       }
 
       rafRef.current = requestAnimationFrame(loop)
     }
 
-    rafRef.current = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(rafRef.current)
+    startLoop()
+
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      runningRef.current = false
+    }
   }, [isPlaying, isAudioLoading, tryAttach])
 
   // Clear attachment when song changes

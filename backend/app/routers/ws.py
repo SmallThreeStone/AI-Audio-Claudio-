@@ -7,7 +7,7 @@ router = APIRouter()
 
 
 @router.websocket("/ws/radio")
-async def radio_websocket(ws: WebSocket, user_id: int = Query(default=0)):
+async def radio_websocket(ws: WebSocket, user_id: int = Query(...)):
     await ws_manager.connect(ws, user_id)
     try:
         while True:

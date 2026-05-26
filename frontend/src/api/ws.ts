@@ -7,8 +7,18 @@ class RadioWebSocket {
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private pongTimer: ReturnType<typeof setTimeout> | null = null
   private manualClose = false
+  private userId = 0  // F10: store as instance property to avoid closure staleness
 
   connect(userId: number = 0) {
+    this.userId = userId
+    // Close any existing connection before creating a new one —
+    // otherwise the old WS leaks and duplicate handlers fire.
+    if (this.ws) {
+      this.manualClose = true
+      this.ws.close()
+      this.ws = null
+    }
+    this.manualClose = false
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const url = `${protocol}//${window.location.host}/ws/radio?user_id=${userId}`
 
@@ -52,7 +62,7 @@ class RadioWebSocket {
         this.manualClose = false
         return
       }
-      this.reconnectTimer = setTimeout(() => this.connect(userId), 3000)
+      this.reconnectTimer = setTimeout(() => this.connect(this.userId), 3000)
     }
 
     this.ws.onerror = () => {

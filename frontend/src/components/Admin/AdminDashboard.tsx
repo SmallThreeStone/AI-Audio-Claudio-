@@ -59,7 +59,7 @@ export default function AdminDashboard() {
       setSessions(ss)
       setEvents(ev)
       setAnomalies(an.alerts)
-    }).catch(() => {})
+    }).catch((e) => { console.warn('Admin overview load failed:', e) })
   }
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function AdminDashboard() {
       setTrends(tr)
       setHourly(hr)
       setAnomalies(an.alerts)
-    }).catch(() => {}).finally(() => setLoading(false))
+    }).catch((e) => { console.warn('Admin hourly/trends load failed:', e) }).finally(() => setLoading(false))
   }, [])
 
   const handleSetRole = async (userId: number, role: string) => {

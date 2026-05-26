@@ -52,9 +52,6 @@ class WSManager:
         for ws in dead:
             self.disconnect(ws)
 
-    # Backwards-compat alias for code that hasn't been migrated yet
-    async def broadcast(self, data: dict):
-        await self.broadcast_to_all(data)
 
     @property
     def user_count(self) -> int:

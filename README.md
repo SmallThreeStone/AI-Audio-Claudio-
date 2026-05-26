@@ -151,6 +151,8 @@ FISH_AUDIO_API_KEY=your_key
 | V3.2 | 多用户数据隔离 — AuthMiddleware (X-Client-Id)、全链路 session 隔离、WebSocket 按用户推送、修复会话接管 Bug、前端 axios 拦截器注入身份、QR 登录/歌单/队列/画像/日历/TTS 全链路用户隔离、cookie_store 废弃 |
 | V4.0 | 视觉与体验大版本"呼吸" — 环形频谱波纹 (AudioContext + AnalyserNode)、SVG 水纹波浪进度条、LRC 滚动歌词面板 (解析+自动滚动)、环境呼吸背景+毛玻璃面板+切歌弹动过渡、手机验证码/密码/扫码三种登录方式 |
 | V4.0.1 | 管理后台密码保护 (SHA256 哈希验证，环境变量可配)、README 版本修订 |
+| V4.1 | 桌面端两栏宽屏布局 — 左侧队列优先（歌单/画像可折叠）、右侧播放器全宽 max-w-xl、QueuePanel 紧凑模式、工具行折叠 |
+| V4.2 | 全量优化 — 后端 8 处 print→logging、限流内存清理、WS 频道安全加固、健康检查 DB 验证、N+1 查询优化(队列/Admin)、废弃配置清理；前端 destroyHowl 抽取(7→1)、上一首修复、通知持久化 8s+手动关闭、横屏遮罩可关闭、黑胶封面 onError、音量静音切换+百分比、歌词加载闪烁修复、工具行始终可见、静默 catch 加日志、音乐画像侧栏简化 |
 
 ## 📄 License
 

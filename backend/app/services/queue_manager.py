@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from ..services.tts_engine import generate_tts_batch
 from ..services.audio_proxy import get_song_url
 from ..utils.broadcast import ws_manager
 
+logger = logging.getLogger(__name__)
 
 async def build_queue_from_script(db: AsyncSession, script: dict, session_id: int, start_position: int = 0, progress_callback=None):
     """Process a radio script: create QueueItems, generate TTS, resolve URLs."""
@@ -53,15 +55,23 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
         tts_tasks.append((item.id, greeting))
         position += 1
 
+    # F18: Batch-load all songs referenced in the script to avoid N+1 queries
+    from ..models.song import Song
+    song_ids_in_script = [e["song_id"] for e in script.get("script", []) if e["type"] == "song"]
+    existing_songs: set[int] = set()
+    if song_ids_in_script:
+        batch_result = await db.execute(select(Song.id).where(Song.id.in_(song_ids_in_script)))
+        existing_songs = {r[0] for r in batch_result.all()}
+
     # Script items
     for entry in script.get("script", []):
         if entry["type"] == "song":
             song_id = entry["song_id"]
 
-            # Verify song exists
-            from ..models.song import Song
-            song_result = await db.execute(select(Song).where(Song.id == song_id))
-            song = song_result.scalar()
+            # Verify song exists (lookup in pre-loaded set, not DB query)
+            if song_id not in existing_songs:
+                logger.warning("Skipping non-existent song_id=%d in script", song_id)
+                continue
 
             item = QueueItem(
                 session_id=session_id,
@@ -149,8 +159,10 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
         if progress_callback:
             await progress_callback("synthesizing", f"合成 DJ 串词完成")
 
-    # Fetch song URLs and synthesize TTS in parallel
-    await asyncio.gather(resolve_all_songs(), synthesize_all_tts())
+    # F21: Run song URL resolution first, then TTS synthesis — serial execution
+    # avoids SQLite "database is locked" from parallel writes to the same file.
+    await resolve_all_songs()
+    await synthesize_all_tts()
 
     # Update session
     session_result = await db.execute(select(DJSession).where(DJSession.id == session_id))
@@ -171,7 +183,23 @@ async def check_refill(db: AsyncSession, session_id: int) -> bool:
     if not session or session.status == "completed":
         return False
 
-    remaining = session.total_items - session.played_items
+    # F16: Count only items with status='ready' that haven't been played yet,
+    # not total_items - played_items which includes errored/unplayable items.
+    played_pos = await db.execute(
+        select(QueueItem.position).where(
+            QueueItem.session_id == session_id,
+            QueueItem.status == 'playing'
+        ).order_by(QueueItem.position.desc()).limit(1)
+    )
+    current_pos = played_pos.scalar() or 0
+    ready_count_result = await db.execute(
+        select(QueueItem).where(
+            QueueItem.session_id == session_id,
+            QueueItem.status == 'ready',
+            QueueItem.position >= current_pos
+        )
+    )
+    remaining = len(ready_count_result.scalars().all())
     if remaining > 3:
         return False
 
@@ -196,12 +224,29 @@ async def check_refill(db: AsyncSession, session_id: int) -> bool:
         await _broadcast_queue(db, session_id)
         return True
     except Exception as e:
-        print(f"Refill error: {e}")
+        logger.error("Refill error: %s", e)
         session.status = "ready"
         await db.commit()
         await ws_manager.broadcast_to_user(session.user_id or 0, {
             "type": "error",
             "message": f"续杯失败: {str(e)}",
         })
+
+    # After refill attempt (success or failure), check if the session is truly exhausted.
+    # If no playable items remain, mark completed so the frontend can reset its state.
+    remaining_after = await db.execute(
+        select(QueueItem).where(
+            QueueItem.session_id == session_id,
+            QueueItem.status == 'ready',
+            QueueItem.position >= current_pos,
+        )
+    )
+    if len(remaining_after.scalars().all()) == 0:
+        session = (await db.execute(select(DJSession).where(DJSession.id == session_id))).scalar()
+        if session and session.status != "completed":
+            session.status = "completed"
+            await db.commit()
+            from ..routers.radio import _session_status_msg
+            await ws_manager.broadcast_to_user(session.user_id or 0, _session_status_msg(session))
 
     return False

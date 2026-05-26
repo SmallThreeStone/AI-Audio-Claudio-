@@ -24,7 +24,7 @@ function matchGenre(pl: { name: string; description?: string }, tag: string): bo
   return keywords.some((kw) => text.includes(kw))
 }
 
-export default function PlaylistBrowser() {
+export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }) {
   const { playlists, setPlaylists, user, setNotice } = useStore()
   const [syncing, setSyncing] = useState(false)
   const [activeTag, setActiveTag] = useState('全部')
@@ -81,19 +81,21 @@ export default function PlaylistBrowser() {
   const filtered = playlists.filter((pl) => matchGenre(pl, activeTag))
 
   return (
-    <div className="py-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider">
-          我的歌单
-        </h3>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)] disabled:opacity-50"
-        >
-          {syncing ? '同步中...' : playlists.length === 0 ? '导入歌单' : '刷新'}
-        </button>
-      </div>
+    <div className={hideHeader ? 'space-y-3 pt-1' : 'py-4 space-y-3'}>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider">
+            我的歌单
+          </h3>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)] disabled:opacity-50"
+          >
+            {syncing ? '同步中...' : playlists.length === 0 ? '导入歌单' : '刷新'}
+          </button>
+        </div>
+      )}
 
       {/* Genre filter chips */}
       {playlists.length > 0 && (

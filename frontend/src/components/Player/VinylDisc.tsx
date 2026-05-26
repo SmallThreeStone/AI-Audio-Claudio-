@@ -34,17 +34,18 @@ export default function VinylDisc() {
       className={`relative transition-all duration-500 vinyl-container ${isIdle ? 'opacity-40 scale-75' : 'opacity-100'}`}
     >
       <div className={`vinyl-disc ${isAudioLoading ? 'animate-pulse' : isPlaying ? 'playing' : 'paused'}`}>
-        {coverUrl ? (
+        {/* Always render C fallback underneath; cover image hides it when loaded */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-[var(--color-radio-muted)] text-2xl font-bold">C</span>
+        </div>
+        {coverUrl && (
           <img
             src={coverUrl}
             alt=""
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
             className="absolute inset-0 w-full h-full rounded-full object-cover opacity-80"
             style={{ maskImage: 'radial-gradient(circle at center, transparent 28%, black 30%)', WebkitMaskImage: 'radial-gradient(circle at center, transparent 28%, black 30%)' }}
           />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-[var(--color-radio-muted)] text-2xl font-bold">C</span>
-          </div>
         )}
       </div>
 

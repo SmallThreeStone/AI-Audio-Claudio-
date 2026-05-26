@@ -1,5 +1,6 @@
 import json
 import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,8 @@ from ..services.weather_service import get_weather_summary, get_weather_structur
 from ..services.greeting_service import build_greeting
 from ..services.calendar_service import get_upcoming_events, build_calendar_summary
 from ..utils.broadcast import ws_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/radio", tags=["radio"])
 
@@ -119,7 +122,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
 
         await _broadcast_queue(session, dj_session.id, body.client_id)
     except Exception as e:
-        print(f"Radio generation error: {e}")
+        logger.error("Radio generation error: %s", e)
         dj_session.status = "error"
         await session.commit()
         await ws_manager.broadcast_to_user(user_id, _session_status_msg(dj_session))
@@ -640,7 +643,14 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
     )
     items = items_result.scalars().all()
 
-    # Enrich with song info
+    # Batch-fetch all Song info to avoid N+1 queries
+    song_ids = [qi.song_id for qi in items if qi.song_id]
+    song_map: dict[int, Song] = {}
+    if song_ids:
+        song_result = await db.execute(select(Song).where(Song.id.in_(song_ids)))
+        for s in song_result.scalars():
+            song_map[s.id] = s
+
     enriched = []
     for qi in items:
         entry = {
@@ -659,8 +669,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
         }
 
         if qi.song_id:
-            song_result = await db.execute(select(Song).where(Song.id == qi.song_id))
-            song = song_result.scalar()
+            song = song_map.get(qi.song_id)
             if song:
                 entry["song_name"] = song.name
                 entry["artist"] = song.artist

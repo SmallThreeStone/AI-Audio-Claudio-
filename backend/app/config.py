@@ -9,7 +9,6 @@ DATA_DIR = BASE_DIR / "data"
 load_dotenv(BASE_DIR / ".env")
 
 DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR / 'radio.db'}"
-COOKIES_FILE = DATA_DIR / "cookies.json"
 TTS_CACHE_DIR = DATA_DIR / "tts_cache"
 
 SIDECAR_PORT = int(os.getenv("SIDECAR_PORT", "3000"))

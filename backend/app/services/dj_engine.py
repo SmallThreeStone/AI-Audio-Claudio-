@@ -1,13 +1,15 @@
 import json
 import random
+import logging
 from datetime import datetime
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from ..config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from ..models.song import Song
 
+logger = logging.getLogger(__name__)
 DJ_PERSONAS = {
     "xiaoyu": {
         "name": "小雨",
@@ -137,7 +139,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
         text = await _call_deepseek(client, p["system_prompt"], user_prompt)
         return _parse_json_response(text)
     except Exception as e:
-        print(f"[DJ Engine] DeepSeek API failed, using fallback: {e}")
+        logger.warning("DeepSeek API failed, using fallback: %s", e)
         return _fallback_script(songs, user_request, persona, weather_info)
 
 
@@ -235,8 +237,15 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
 
 
 async def _get_song_candidates(db: AsyncSession, limit: int = 80, exclude_ids: list[int] | None = None) -> list[Song]:
-    """Get songs for AI to choose from. Prioritize high popularity + mood variety. Limit kept low to reduce token usage."""
-    query = select(Song).where(Song.mood_tags != None).order_by(Song.popularity.desc().nullslast())
+    """Get songs for AI to choose from. Exclude songs known to be unplayable (copyright/DMCA)."""
+    query = (
+        select(Song)
+        .where(
+            Song.mood_tags != None,
+            or_(Song.has_playable_url == True, Song.last_url_fetch == None),
+        )
+        .order_by(Song.popularity.desc().nullslast())
+    )
     if exclude_ids:
         query = query.where(Song.id.notin_(exclude_ids))
 
@@ -248,7 +257,14 @@ async def _get_song_candidates(db: AsyncSession, limit: int = 80, exclude_ids: l
         existing_ids = {s.id for s in songs}
         if exclude_ids:
             existing_ids.update(exclude_ids)
-        extra_query = select(Song).where(Song.id.notin_(existing_ids)).limit(remaining)
+        extra_query = (
+            select(Song)
+            .where(
+                Song.id.notin_(existing_ids),
+                or_(Song.has_playable_url == True, Song.last_url_fetch == None),
+            )
+            .limit(remaining)
+        )
         extra = (await db.execute(extra_query)).scalars().all()
         songs.extend(extra)
 
@@ -289,7 +305,7 @@ async def _build_behavioral_profile(db: AsyncSession, user_id: int | None = None
         if not result.meta.get("insufficient_data", True):
             return result.persona_paragraph
     except Exception as e:
-        print(f"Distillation failed, falling back to basic profile: {e}")
+        logger.warning("Distillation failed, falling back to basic profile: %s", e)
 
     # ── Fallback: raw stats for new users ──
 

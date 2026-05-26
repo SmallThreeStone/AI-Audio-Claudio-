@@ -34,7 +34,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             now = time.time()
             window_start = now - _RATE_LIMIT_WINDOW
             timestamps = [t for t in _rate_limit_store[client_key] if t > window_start]
-            _rate_limit_store[client_key] = timestamps
+            if timestamps:
+                _rate_limit_store[client_key] = timestamps
+            else:
+                del _rate_limit_store[client_key]
             if len(timestamps) >= _RATE_LIMIT_MAX:
                 retry = int(timestamps[0] + _RATE_LIMIT_WINDOW - now)
                 return JSONResponse(
@@ -86,13 +89,15 @@ async def restore_session():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    await restore_session()
+    # F15: Start sidecar BEFORE restoring sessions — restore_session() calls
+    # localhost:3000/login/status, which requires the sidecar to be running.
     try:
         await sidecar.start()
-        print("[AI Radio] NetEase sidecar started on port 3000")
+        logger.info("NetEase sidecar started on port 3000")
     except Exception as e:
-        print(f"[AI Radio] WARNING: Sidecar failed to start: {e}")
-        print("[AI Radio] Login/playback features will not work.")
+        logger.warning("Sidecar failed to start: %s", e)
+        logger.warning("Login/playback features will not work.")
+    await restore_session()
     yield
     await sidecar.stop()
 
@@ -148,7 +153,13 @@ if os.path.isdir(FRONTEND_DIR):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "3.2.0"}
+    try:
+        from .database import async_session
+        async with async_session() as db:
+            await db.execute(select(1))
+        return {"status": "ok", "db": "ok", "version": "3.2.0"}
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error", "db": "unavailable"})
 
 
 @app.get("/api/settings/voices")

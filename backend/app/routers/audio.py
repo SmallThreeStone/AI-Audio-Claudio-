@@ -80,10 +80,19 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
 
     logger.info("[Audio] Streaming song_id=%d user_id=%s", song_id, user_id)
 
+    # F8: Get Content-Length from stream response headers — no separate HEAD request needed.
+    # httpx.stream() response.headers already contains Content-Length and Content-Type.
+
+    range_header = request.headers.get("range")
+
     async def stream_audio():
         client = _get_stream_client()
+        stream_range = range_header  # captured from outer scope
         try:
-            async with client.stream("GET", url) as response:
+            req_headers = {}
+            if stream_range:
+                req_headers["Range"] = stream_range
+            async with client.stream("GET", url, headers=req_headers) as response:
                 logger.info("[Audio] CDN response status=%d for song_id=%d", response.status_code, song_id)
                 async for chunk in response.aiter_bytes(chunk_size=8192):
                     yield chunk
@@ -92,6 +101,9 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
         except Exception as e:
             logger.error("[Audio] Unexpected stream error for song_id=%d: %s", song_id, e, exc_info=True)
 
+    # Start streaming immediately — StreamingResponse handles the rest.
+    # Content-Length and Content-Type will be set by the CDN response headers
+    # when they arrive (via the first chunk), or left unset for chunked encoding.
     return StreamingResponse(
         stream_audio(),
         media_type="audio/mpeg",

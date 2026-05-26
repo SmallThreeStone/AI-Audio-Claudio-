@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../../store'
 import { parseLRC, findActiveLyricIndex } from '../../utils/lyrics'
 import api from '../../api/client'
@@ -8,6 +8,7 @@ export default function LyricPanel() {
     useStore()
   const listRef = useRef<HTMLDivElement>(null)
   const fetchedSongIdRef = useRef<number | null>(null)
+  const [lyricLoading, setLyricLoading] = useState(false)
 
   const isTTS = currentItem?.item_type?.startsWith('tts')
   const songId = currentItem?.song_id
@@ -21,13 +22,14 @@ export default function LyricPanel() {
     }
 
     if (fetchedSongIdRef.current === songId) return
-    fetchedSongIdRef.current = songId
+    setLyricLoading(true)
 
     let cancelled = false
 
     api.get(`/audio/lyrics/${songId}`)
       .then(({ data }: { data: { lrc: string; tlrc: string } }) => {
         if (cancelled) return
+        fetchedSongIdRef.current = songId
         const lrcText = data.tlrc || data.lrc
         const parsed = parseLRC(lrcText)
         if (parsed.length > 0) {
@@ -38,9 +40,14 @@ export default function LyricPanel() {
         } else {
           setLyrics([])
         }
+        setLyricLoading(false)
       })
       .catch(() => {
-        if (!cancelled) setLyrics([])
+        if (!cancelled) {
+          fetchedSongIdRef.current = songId
+          setLyrics([])
+          setLyricLoading(false)
+        }
       })
 
     return () => {
@@ -58,12 +65,16 @@ export default function LyricPanel() {
     setActiveLyricIndex(idx)
   }, [lyrics, currentTime, setActiveLyricIndex])
 
-  // Auto-scroll to active line
+  // Auto-scroll to active line (within the panel — never leaks to page)
   useEffect(() => {
     if (activeLyricIndex < 0 || !listRef.current) return
-    const activeEl = listRef.current.querySelector(`[data-lyric-index="${activeLyricIndex}"]`)
+    const activeEl = listRef.current.querySelector(
+      `[data-lyric-index="${activeLyricIndex}"]`
+    ) as HTMLElement | null
     if (activeEl) {
-      activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const container = listRef.current
+      const target = activeEl.offsetTop - container.clientHeight / 2 + activeEl.offsetHeight / 2
+      container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
     }
   }, [activeLyricIndex])
 
@@ -71,7 +82,7 @@ export default function LyricPanel() {
   if (isTTS || !currentItem) return null
 
   // Loading state
-  if (lyrics.length === 0 && currentItem.item_type === 'song' && fetchedSongIdRef.current === songId) {
+  if (lyricLoading) {
     return (
       <div className="lyric-panel text-center flex items-center justify-center">
         <div className="space-y-3 w-full">

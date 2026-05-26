@@ -85,6 +85,9 @@ function MainApp() {
   const [mobileTab, setMobileTab] = useState<MobileTab>('radio')
   const [isPulling, setIsPulling] = useState(false)
   const [offline, setOffline] = useState(!navigator.onLine)
+  const [showPlaylists, setShowPlaylists] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+  const [landscapeDismissed, setLandscapeDismissed] = useState(false)
   const ptrStartY = useRef(0)
   const ptrRef = useRef<HTMLDivElement>(null)
 
@@ -174,7 +177,7 @@ function MainApp() {
           })
         }
       })
-      .catch(() => {})
+      .catch((e) => { console.warn('Auth status check failed:', e) })
       .finally(() => setChecking(false))
   }, [])
 
@@ -205,11 +208,35 @@ function MainApp() {
           )}
 
           <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full pb-16 lg:pb-0">
-            {/* Desktop sidebar — unchanged */}
-            <aside className="w-72 flex-shrink-0 hidden lg:block">
+            {/* Desktop sidebar: queue-focused, playlists & profile collapsed */}
+            <aside className="w-72 flex-shrink-0 hidden lg:flex flex-col">
               <div className="sticky top-12 sm:top-14 overflow-y-auto max-h-[calc(100vh-3rem)] sm:max-h-[calc(100vh-3.5rem)] py-3 sm:py-4 space-y-4">
-                <PlaylistBrowser />
-                <MusicProfilePanel />
+                {/* Collapsible playlists */}
+                <button
+                  onClick={() => setShowPlaylists(!showPlaylists)}
+                  className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider hover:text-[var(--color-radio-text)] transition-colors"
+                >
+                  <svg className={`w-3 h-3 transition-transform ${showPlaylists ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  我的歌单
+                </button>
+                {showPlaylists && <PlaylistBrowser hideHeader />}
+
+                {/* Queue — always visible, the main focus */}
+                <QueuePanel compact />
+
+                {/* Collapsible music profile */}
+                <button
+                  onClick={() => setShowProfile(!showProfile)}
+                  className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider hover:text-[var(--color-radio-text)] transition-colors"
+                >
+                  <svg className={`w-3 h-3 transition-transform ${showProfile ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  音乐画像
+                </button>
+                {showProfile && <MusicProfilePanel hideHeader />}
               </div>
             </aside>
 
@@ -226,11 +253,10 @@ function MainApp() {
               {mobileTab === 'profile' && <MusicProfilePanel />}
             </main>
 
-            {/* Desktop main — unchanged (always radio view) */}
+            {/* Desktop main — full-width player area */}
             <main className="flex-1 flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 hidden lg:flex">
               <RadioPlayer />
               <ChatInput />
-              <QueuePanel />
             </main>
           </div>
         </Layout>
@@ -243,13 +269,21 @@ function MainApp() {
       <MobileNav active={mobileTab} onChange={setMobileTab} />
 
       {/* Landscape overlay — prompts user to rotate on short screens */}
-      <div className="landscape-overlay">
-        <svg className="w-12 h-12 text-[var(--color-radio-accent)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-        <p className="text-sm text-[var(--color-radio-text)] font-medium">请旋转手机</p>
-        <p className="text-xs text-[var(--color-radio-muted)]">竖屏模式下体验更佳</p>
-      </div>
+      {!landscapeDismissed && (
+        <div className="landscape-overlay">
+          <svg className="w-12 h-12 text-[var(--color-radio-accent)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          <p className="text-sm text-[var(--color-radio-text)] font-medium">请旋转手机</p>
+          <p className="text-xs text-[var(--color-radio-muted)]">竖屏模式下体验更佳</p>
+          <button
+            onClick={() => setLandscapeDismissed(true)}
+            className="mt-2 px-4 py-1.5 text-xs bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-lg text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors"
+          >
+            知道了，先不提示
+          </button>
+        </div>
+      )}
 
       {/* Pull-to-refresh indicator */}
       <div ref={ptrRef} className={`ptr-indicator ${isPulling ? 'active' : ''}`}>

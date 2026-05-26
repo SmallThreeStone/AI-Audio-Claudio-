@@ -25,7 +25,7 @@ export default function Header() {
   const [weather, setWeather] = useState<WeatherInfo | null>(null)
 
   useEffect(() => {
-    getWeather().then(setWeather).catch(() => {})
+    getWeather().then(setWeather).catch((e) => { console.warn('Weather load failed:', e) })
   }, [])
 
   const handleLogout = async () => {

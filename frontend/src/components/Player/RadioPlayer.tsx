@@ -22,17 +22,17 @@ export default function RadioPlayer() {
   const { session, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
   const { skip, skipTo, stop, togglePause, seek, previous } = useRadioPlayer()
 
-  // Auto-clear notice after 3 seconds
+  // Auto-clear notice after 8 seconds
   useEffect(() => {
     if (!notice) return
-    const timer = setTimeout(() => setNotice(null), 3000)
+    const timer = setTimeout(() => setNotice(null), 8000)
     return () => clearTimeout(timer)
   }, [notice, setNotice])
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
 
   return (
-    <div className="w-full max-w-md flex flex-col items-center gap-3 sm:gap-4">
+    <div className="w-full max-w-xl flex flex-col items-center gap-4">
       <AmbientBackground />
       <div className="relative vinyl-stage">
         <VinylDisc />
@@ -94,8 +94,16 @@ export default function RadioPlayer() {
       )}
 
       {notice && (
-        <div className="text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full px-3 py-1 animate-pulse">
-          {notice}
+        <div className="flex items-center gap-2 text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full pl-3 pr-1.5 py-1">
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="w-4 h-4 rounded-full bg-[var(--color-radio-gold)]/20 flex items-center justify-center hover:bg-[var(--color-radio-gold)]/40 transition-colors"
+          >
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -103,9 +111,13 @@ export default function RadioPlayer() {
       <LyricPanel />
       <UpNext onSkipTo={skipTo} />
       <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
-      <PlayHistory />
-      <SpeakerSelector />
-      <SleepTimer />
+
+      {/* Tools row */}
+      <div className="w-full border-t border-[var(--color-radio-border)]/50 pt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <PlayHistory />
+        <SpeakerSelector />
+        <SleepTimer />
+      </div>
     </div>
   )
 }

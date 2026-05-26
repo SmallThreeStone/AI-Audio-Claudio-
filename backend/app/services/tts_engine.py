@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import httpx
 from ..config import (
     TTS_CACHE_DIR, TTS_VOICE, TTS_RATE,
     TTS_PROVIDER, FISH_AUDIO_API_KEY, FISH_AUDIO_BASE_URL,
     FISH_AUDIO_REFERENCE_ID, FISH_AUDIO_EMOTION_TAGS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BaseTTSProvider:
@@ -27,7 +30,7 @@ class BaseTTSProvider:
         output: dict[int, str] = {}
         for r in results:
             if isinstance(r, Exception):
-                print(f"TTS generation error: {r}")
+                logger.error("TTS generation error: %s", r)
                 continue
             item_id, path = r
             output[item_id] = path

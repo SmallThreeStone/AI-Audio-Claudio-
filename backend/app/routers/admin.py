@@ -75,14 +75,27 @@ async def list_users(
     result = await session.execute(select(User).order_by(User.created_at))
     users = result.scalars().all()
 
+    # Batch query session and listen counts instead of N+1 per-user queries
+    sess_counts = {}
+    if users:
+        sess_result = await session.execute(
+            select(DJSession.user_id, func.count())
+            .where(DJSession.user_id.in_([u.id for u in users]))
+            .group_by(DJSession.user_id)
+        )
+        sess_counts = {row[0]: row[1] for row in sess_result.all()}
+
+    listen_counts = {}
+    if users:
+        listen_result = await session.execute(
+            select(ListeningHistory.user_id, func.count())
+            .where(ListeningHistory.user_id.in_([u.id for u in users]))
+            .group_by(ListeningHistory.user_id)
+        )
+        listen_counts = {row[0]: row[1] for row in listen_result.all()}
+
     user_list = []
     for u in users:
-        sess_count = (await session.execute(
-            select(func.count()).select_from(DJSession).where(DJSession.user_id == u.id)
-        )).scalar() or 0
-        listen_count = (await session.execute(
-            select(func.count()).select_from(ListeningHistory).where(ListeningHistory.user_id == u.id)
-        )).scalar() or 0
         user_list.append({
             "id": u.id,
             "netease_uid": u.netease_uid,
@@ -90,8 +103,8 @@ async def list_users(
             "avatar_url": u.avatar_url,
             "login_status": u.login_status,
             "role": u.role,
-            "session_count": sess_count,
-            "listen_count": listen_count,
+            "session_count": sess_counts.get(u.id, 0),
+            "listen_count": listen_counts.get(u.id, 0),
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "updated_at": u.updated_at.isoformat() if u.updated_at else None,
         })
