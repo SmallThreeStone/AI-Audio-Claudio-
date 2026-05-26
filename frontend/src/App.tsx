@@ -17,11 +17,70 @@ import SettingsPanel from './components/Settings/SettingsPanel'
 import MusicProfilePanel from './components/Library/MusicProfile'
 import { useWebSocket } from './hooks/useWebSocket'
 
-import { getAuthStatus } from './api/auth'
+import { getAuthStatus, verifyAdminPassword } from './api/auth'
 import { getClientId } from './utils/clientId'
 
+function AdminAuthGate({ onVerify }: { onVerify: () => void }) {
+  const { setShowAdmin } = useStore()
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!password.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      const result = await verifyAdminPassword(password)
+      if (result.valid) {
+        onVerify()
+      } else {
+        setError(result.message || '密码错误')
+      }
+    } catch {
+      setError('验证服务异常')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center radio-bg">
+      <form onSubmit={handleSubmit} className="bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-2xl p-8 flex flex-col items-center gap-4 w-full max-w-sm mx-4">
+        <div className="w-12 h-12 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center mb-2">
+          <span className="text-white text-lg font-bold">A</span>
+        </div>
+        <h2 className="text-lg font-bold">管理后台</h2>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="请输入管理密码"
+          autoFocus
+          className="w-full bg-white/5 border border-[var(--color-radio-border)] rounded-lg px-3 py-2.5 text-sm text-[var(--color-radio-text)] outline-none placeholder:text-white/20 text-center"
+        />
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2.5 bg-[var(--color-radio-accent)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-radio-accent-dim)] transition-colors disabled:opacity-50"
+        >
+          {loading ? '验证中...' : '进入'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowAdmin(false)}
+          className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]"
+        >
+          返回
+        </button>
+      </form>
+    </div>
+  )
+}
+
 function MainApp() {
-  const { isLoggedIn, showAdmin, setUser, setClientId, clientId, setShowTranscript, setShowShortcuts, session } = useStore()
+  const { isLoggedIn, showAdmin, adminVerified, setAdminVerified, setUser, setClientId, clientId, setShowTranscript, setShowShortcuts, session } = useStore()
   const [checking, setChecking] = useState(true)
   const [mobileTab, setMobileTab] = useState<MobileTab>('radio')
   const [isPulling, setIsPulling] = useState(false)
@@ -136,7 +195,7 @@ function MainApp() {
           <LoginModal />
         </div>
       ) : showAdmin ? (
-        <AdminDashboard />
+        adminVerified ? <AdminDashboard /> : <AdminAuthGate onVerify={() => setAdminVerified(true)} />
       ) : (
         <Layout>
           {offline && (

@@ -25,6 +25,11 @@ export async function sendCaptcha(phone: string, countrycode?: string) {
   return data as { code: number; message: string }
 }
 
+export async function verifyAdminPassword(password: string) {
+  const { data } = await api.post('/auth/admin/verify', { password })
+  return data as { valid: boolean; message?: string }
+}
+
 export async function logout() {
   await api.post('/auth/logout')
 }

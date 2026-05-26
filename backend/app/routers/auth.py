@@ -1,9 +1,11 @@
 import json
+import hashlib
 import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from ..config import ADMIN_PASSWORD_HASH
 from ..database import get_session
 from ..models.user import User
 from ..services.netease_client import netease
@@ -258,6 +260,21 @@ async def logout(request: Request, session: AsyncSession = Depends(get_session))
         user.qr_key = None
         await session.commit()
     return {"status": "ok"}
+
+
+@router.post("/admin/verify")
+async def admin_verify(request: Request):
+    """Verify admin password before granting access to the admin dashboard."""
+    body = await request.json()
+    password = (body.get("password") or "").strip()
+
+    if not password:
+        return {"valid": False, "message": "请输入密码"}
+
+    hashed = hashlib.sha256(password.encode()).hexdigest()
+    if hashed == ADMIN_PASSWORD_HASH:
+        return {"valid": True}
+    return {"valid": False, "message": "密码错误"}
 
 
 _COOKIE_ATTRS = {"path", "httponly", "secure", "expires", "domain", "samesite", "max-age"}

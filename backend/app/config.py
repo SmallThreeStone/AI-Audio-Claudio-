@@ -44,5 +44,11 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 CALENDAR_ENABLED = os.getenv("CALENDAR_ENABLED", "false").lower() == "true"
 
+# Admin password (SHA256 hash). Default: "313977236"
+ADMIN_PASSWORD_HASH = os.getenv(
+    "ADMIN_PASSWORD_HASH",
+    "707699d171d7c2a09c7974652dfc18de32a80e3d38eda78248e78871a6e39283",
+)
+
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TTS_CACHE_DIR, exist_ok=True)

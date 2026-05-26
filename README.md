@@ -150,6 +150,7 @@ FISH_AUDIO_API_KEY=your_key
 | V3.1 | 收尾修复（历史模式/skip 混用/retry_after/速率限制卸载）、URL 缓存预刷新、CLAUDE.md 同步、泛化 user_filter、PWA 移动端增强（横屏提示/下拉刷新/滑动切 Tab/离线提示）、Fish Audio 运行时切换、日历连接状态、语音输入 |
 | V3.2 | 多用户数据隔离 — AuthMiddleware (X-Client-Id)、全链路 session 隔离、WebSocket 按用户推送、修复会话接管 Bug、前端 axios 拦截器注入身份、QR 登录/歌单/队列/画像/日历/TTS 全链路用户隔离、cookie_store 废弃 |
 | V4.0 | 视觉与体验大版本"呼吸" — 环形频谱波纹 (AudioContext + AnalyserNode)、SVG 水纹波浪进度条、LRC 滚动歌词面板 (解析+自动滚动)、环境呼吸背景+毛玻璃面板+切歌弹动过渡、手机验证码/密码/扫码三种登录方式 |
+| V4.0.1 | 管理后台密码保护 (SHA256 哈希验证，环境变量可配)、README 版本修订 |
 
 ## 📄 License
 

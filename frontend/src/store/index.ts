@@ -76,6 +76,7 @@ interface SettingsSlice {
   showTranscript: boolean
   showSettings: boolean
   showAdmin: boolean
+  adminVerified: boolean
   isRestoring: boolean
   notice: string | null
   setSelectedPersona: (persona: string) => void
@@ -85,6 +86,7 @@ interface SettingsSlice {
   setShowTranscript: (show: boolean) => void
   setShowSettings: (show: boolean) => void
   setShowAdmin: (show: boolean) => void
+  setAdminVerified: (verified: boolean) => void
   setIsRestoring: (restoring: boolean) => void
   setNotice: (msg: string | null) => void
 }
@@ -165,6 +167,7 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   showTranscript: false,
   showSettings: false,
   showAdmin: false,
+  adminVerified: false,
   isRestoring: false,
   notice: null,
   setSelectedPersona: (persona) => set({ selectedPersona: persona }),
@@ -173,7 +176,8 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   setShowShortcuts: (show) => set({ showShortcuts: show }),
   setShowTranscript: (show) => set({ showTranscript: show }),
   setShowSettings: (show) => set({ showSettings: show }),
-  setShowAdmin: (show) => set({ showAdmin: show }),
+  setShowAdmin: (show) => set({ showAdmin: show, adminVerified: false }),
+  setAdminVerified: (verified) => set({ adminVerified: verified }),
   setIsRestoring: (restoring) => set({ isRestoring: restoring }),
   setNotice: (notice) => set({ notice }),
 }))
