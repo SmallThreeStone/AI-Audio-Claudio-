@@ -10,6 +10,7 @@ import SleepTimer from './SleepTimer'
 import SpeakerSelector from './SpeakerSelector'
 import UpNext from './UpNext'
 import PlayHistory from './PlayHistory'
+import ShareCard from './ShareCard'
 import { useEffect } from 'react'
 
 const STAGES = [
@@ -115,6 +116,7 @@ export default function RadioPlayer() {
       {/* Tools row */}
       <div className="w-full border-t border-[var(--color-radio-border)]/50 pt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
         <PlayHistory />
+        <ShareCard />
         <SpeakerSelector />
         <SleepTimer />
       </div>

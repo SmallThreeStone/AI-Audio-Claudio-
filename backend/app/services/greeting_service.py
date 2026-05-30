@@ -97,6 +97,25 @@ async def build_greeting(db: AsyncSession, weather_summary: str | None = None, u
 
     greeting_text = "，".join(greeting_parts) + "。"
 
+    # Build personalized quick prompts from available context
+    personalized_prompts: list[str] = []
+    if artists:
+        for a in artists[:3]:
+            personalized_prompts.append(f"来点{a}风格的歌")
+    if top_genre:
+        personalized_prompts.append(f"想听{top_genre}类型的音乐")
+    if weather_summary:
+        personalized_prompts.append(f"{time_label.split('好')[0]}的天气，来点{time_mood}的音乐")
+    personalized_prompts.append(f"{time_label}，{time_mood}的旋律")
+    # Deduplicate and limit to 5
+    seen = set()
+    unique_prompts = []
+    for p in personalized_prompts:
+        if p not in seen:
+            seen.add(p)
+            unique_prompts.append(p)
+    unique_prompts = unique_prompts[:5]
+
     return {
         "greeting_text": greeting_text,
         "suggested_mood": suggested_mood,
@@ -104,4 +123,5 @@ async def build_greeting(db: AsyncSession, weather_summary: str | None = None, u
         "time_mood": time_mood,
         "recent_artists": artists[:5],
         "top_genre": top_genre,
+        "personalized_prompts": unique_prompts,
     }

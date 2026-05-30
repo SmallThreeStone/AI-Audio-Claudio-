@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store'
-import { requestRadio, getGreeting } from '../../api/radio'
+import { requestRadio, getGreeting, getDemoStatus, adjustMood } from '../../api/radio'
+import { trackEvent } from '../../api/analytics'
 import { getClientId } from '../../utils/clientId'
 import PersonaSelector from './PersonaSelector'
 import VoiceInput from './VoiceInput'
@@ -18,7 +19,12 @@ export default function ChatInput() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [greeting, setGreeting] = useState<string | null>(null)
   const [suggestedMood, setSuggestedMood] = useState<string | null>(null)
-  const { setIsGenerating, isGenerating, selectedPersona } = useStore()
+  const [personalizedPrompts, setPersonalizedPrompts] = useState<string[]>([])
+  const [demoAvailable, setDemoAvailable] = useState(false)
+  const [showAdjust, setShowAdjust] = useState(false)
+  const [adjustMoodText, setAdjustMoodText] = useState('')
+  const [adjusting, setAdjusting] = useState(false)
+  const { setIsGenerating, isGenerating, selectedPersona, demoMode, setDemoMode, user, session } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -27,7 +33,11 @@ export default function ChatInput() {
       .then((g) => {
         setGreeting(g.greeting_text)
         setSuggestedMood(g.suggested_mood)
+        if (g.personalized_prompts?.length) setPersonalizedPrompts(g.personalized_prompts)
       })
+      .catch((e) => { console.warn('Greeting fetch failed:', e) })
+    getDemoStatus()
+      .then((d) => { if (d.demo_available) setDemoAvailable(true) })
       .catch(() => {})
   }, [])
 
@@ -59,12 +69,30 @@ export default function ChatInput() {
 
     try {
       await requestRadio(trimmed, selectedPersona, getClientId())
+      trackEvent('session_start', { persona: selectedPersona, mood: trimmed })
+      if (demoAvailable) setDemoMode(true)
     } catch (e) {
       console.error('Failed to request radio:', e)
       setIsGenerating(false)
     }
 
     setIsSubmitting(false)
+  }
+
+  const handleAdjustMood = async () => {
+    const trimmed = adjustMoodText.trim()
+    if (!trimmed || adjusting || !session) return
+    setAdjusting(true)
+    setIsGenerating(true)
+    try {
+      await adjustMood(session.id, trimmed, getClientId())
+      setAdjustMoodText('')
+      setShowAdjust(false)
+    } catch (e) {
+      console.error('Failed to adjust mood:', e)
+      setIsGenerating(false)
+    }
+    setAdjusting(false)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -74,13 +102,60 @@ export default function ChatInput() {
   }
 
   const showIdle = !isGenerating && !isSubmitting
+  const showDemoEntry = demoAvailable && !user && !demoMode
 
   return (
     <div className="w-full max-w-md">
-      {/* Persona selector */}
-      <div className="flex justify-center mb-2">
+      {/* Demo mode entry — shown when user has no songs */}
+      {showDemoEntry && (
+        <div className="mb-3 p-3 rounded-xl border border-[var(--color-radio-accent)]/30 bg-[var(--color-radio-accent)]/5 text-center">
+          <p className="text-xs text-[var(--color-radio-text)] mb-2">
+            你的曲库还是空的。先体验一下 AI DJ 吧
+          </p>
+          <button
+            onClick={() => handleSubmit('来一首适合当前心情的歌')}
+            className="text-xs px-4 py-1.5 rounded-full bg-[var(--color-radio-accent)] text-white hover:opacity-90 transition-opacity"
+          >
+            体验 Demo
+          </button>
+        </div>
+      )}
+
+      {/* Persona selector + Adjust mood */}
+      <div className="flex justify-center items-center gap-2 mb-2">
         <PersonaSelector />
+        {session && (session.status === 'ready' || session.status === 'playing') && (
+          <button
+            onClick={() => { setShowAdjust(!showAdjust); setAdjustMoodText('') }}
+            className="text-[10px] px-2 py-1 rounded-full border border-[var(--color-radio-accent)]/30 text-[var(--color-radio-accent)] hover:bg-[var(--color-radio-accent)]/10 transition-colors"
+          >
+            {showAdjust ? '取消' : '换心情'}
+          </button>
+        )}
       </div>
+
+      {/* Adjust mood mini input */}
+      {showAdjust && session && (
+        <div className="flex items-center gap-2 mb-2">
+          <input
+            type="text"
+            value={adjustMoodText}
+            onChange={(e) => setAdjustMoodText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAdjustMood() }}
+            placeholder="想换什么心情？比如「想听更欢快的」..."
+            disabled={adjusting}
+            autoFocus
+            className="flex-1 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[var(--color-radio-accent)] disabled:opacity-50"
+          />
+          <button
+            onClick={handleAdjustMood}
+            disabled={adjusting || !adjustMoodText.trim()}
+            className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-radio-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex-shrink-0"
+          >
+            {adjusting ? '...' : '换'}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus-within:border-[var(--color-radio-accent)] transition-colors">
         <input
@@ -120,10 +195,10 @@ export default function ChatInput() {
         </button>
       )}
 
-      {/* Quick prompts */}
+      {/* Quick prompts — personalized when available */}
       {showIdle && (
         <div className="flex flex-wrap gap-2 mt-3 justify-center">
-          {QUICK_PROMPTS.map((prompt) => (
+          {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (
             <button
               key={prompt}
               onClick={() => handleSubmit(prompt)}

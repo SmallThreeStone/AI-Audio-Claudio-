@@ -101,15 +101,20 @@ DJ_PERSONAS = {
 }
 
 
-async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None, user_id: int | None = None) -> dict:
+async def generate_radio_script(db: AsyncSession, user_request: str, session_id: int, persona: str = "xiaoyu", weather_info: str | None = None, calendar_info: str | None = None, user_id: int | None = None, demo_songs: list[dict] | None = None) -> dict:
     """Generate a radio script using DeepSeek. Returns parsed JSON."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
 
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
-    songs = await _get_song_candidates(db)
-    library_summary = await _build_library_summary(db)
+    if demo_songs:
+        songs = demo_songs
+        library_summary = f"体验模式 · 示例曲库: {len(demo_songs)} 首歌曲，{len(set(s['artist'] for s in demo_songs))} 位艺人"
+        behavioral_profile = "（体验模式 — 登录后获得个性化推荐）"
+    else:
+        songs = await _get_song_candidates(db)
+        library_summary = await _build_library_summary(db)
+        behavioral_profile = await _build_behavioral_profile(db, user_id)
     song_text = _format_song_list(songs)
-    behavioral_profile = await _build_behavioral_profile(db, user_id)
 
     weather_block = ""
     if weather_info:
@@ -201,6 +206,54 @@ def _parse_json_response(text: str) -> dict:
         raise ValueError(f"JSON 'script' field must be an array: {text[:200]}...")
 
     return parsed
+
+
+async def generate_adjustment(db: AsyncSession, original_request: str, new_mood: str, current_theme: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
+    """Generate a transition script when the user changes mood mid-session."""
+    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
+    p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
+
+    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids)
+    song_text = _format_song_list(songs)
+
+    system_prompt = f"""{p['system_prompt']}
+
+当前电台主题是「{current_theme}」，听众想切换心情。你需要写一段自然的过渡串词（1-2句），先承接当前氛围，再自然地转向新心情。不要突兀。
+
+返回 JSON（不要 markdown 代码块）：
+{{"transition_tts":"过渡串词","script":[{{"type":"song","song_id":...,"intro_text":"..."}},...]}}"""
+
+    user_prompt = f"""听众原始请求："{original_request}"
+听众现在说：「换心情：{new_mood}」
+
+【当前时间】
+{_current_time_context()}
+
+【候选曲目（{len(songs)} 首）】
+{song_text}
+
+请选 {count} 首歌匹配新心情，先写一段过渡串词承接上下文再切换风格。"""
+
+    try:
+        text = await _call_deepseek(client, system_prompt, user_prompt, max_tokens=2048)
+        return _parse_json_response(text)
+    except Exception as e:
+        logger.warning("DeepSeek adjustment failed, using fallback: %s", e)
+        picks = songs[:count] if len(songs) >= count else songs
+        script = []
+        for i, s in enumerate(picks):
+            sid = s.id if hasattr(s, 'id') else s.get('id', i+1)
+            name = s.name if hasattr(s, 'name') else s.get('name', '?')
+            artist = s.artist if hasattr(s, 'artist') else s.get('artist', '?')
+            script.append({
+                "type": "song",
+                "song_id": sid,
+                "intro_text": f"换种心情，来听{artist}的{name}。",
+            })
+        return {
+            "transition_tts": f"好，换个心情。接下来感受一下{new_mood}的感觉。",
+            "script": script,
+        }
 
 
 async def generate_continuation(db: AsyncSession, original_request: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
@@ -461,16 +514,19 @@ async def _build_behavioral_profile(db: AsyncSession, user_id: int | None = None
     return "\n".join(lines)
 
 
-def _format_song_list(songs: list[Song]) -> str:
+def _format_song_list(songs) -> str:
     """Format songs for AI prompt."""
     lines = []
-    for s in songs:
-        tags = s.mood_tags or ""
-        dur = f"{s.duration_ms // 60000}:{(s.duration_ms % 60000) // 1000:02d}" if s.duration_ms else "?"
-        lines.append(
-            f"[id:{s.id}] {s.name} - {s.artist} | 专辑:{s.album or '?'} | "
-            f"心情:{tags} | 时长:{dur}"
-        )
+    for i, s in enumerate(songs):
+        if isinstance(s, dict):
+            lines.append(f"[id:{i+1}] {s['name']} - {s['artist']} | 专辑:{s.get('album', '?')}")
+        else:
+            tags = s.mood_tags or ""
+            dur = f"{s.duration_ms // 60000}:{(s.duration_ms % 60000) // 1000:02d}" if s.duration_ms else "?"
+            lines.append(
+                f"[id:{s.id}] {s.name} - {s.artist} | 专辑:{s.album or '?'} | "
+                f"心情:{tags} | 时长:{dur}"
+            )
     return "\n".join(lines)
 
 
@@ -497,7 +553,7 @@ def _current_time_context() -> str:
     return f"现在是{weekday}{period} {now.hour}:{now.minute:02d}，请根据这个时段调整问候语、选歌风格和整体氛围。"
 
 
-def _fallback_script(songs: list[Song], user_request: str, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
+def _fallback_script(songs, user_request: str, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
     """Local rule-based song selection when DeepSeek API is unavailable."""
     import random as _random
     _random.seed()
@@ -513,15 +569,19 @@ def _fallback_script(songs: list[Song], user_request: str, persona: str = "xiaoy
     elif 21 <= h < 23: time_label = "晚上"
     else: time_label = "深夜"
 
-    # Pick 6 songs with mood tag variety
-    picks: list[Song] = []
-    mood_pool = [s for s in songs if s.mood_tags]
-    no_mood = [s for s in songs if not s.mood_tags]
-    _random.shuffle(mood_pool)
-    _random.shuffle(no_mood)
-    # Take up to 6 from mood-tagged, fill rest from untagged
-    picks = mood_pool[:6]
-    picks.extend(no_mood[:max(0, 6 - len(picks))])
+    is_demo = songs and isinstance(songs[0], dict) if songs else False
+
+    picks = []
+    if is_demo:
+        _random.shuffle(songs)
+        picks = songs[:6]
+    else:
+        mood_pool = [s for s in songs if s.mood_tags]
+        no_mood = [s for s in songs if not s.mood_tags]
+        _random.shuffle(mood_pool)
+        _random.shuffle(no_mood)
+        picks = mood_pool[:6]
+        picks.extend(no_mood[:max(0, 6 - len(picks))])
 
     # Weather-aware greeting
     weather_hint = ""
@@ -545,16 +605,21 @@ def _fallback_script(songs: list[Song], user_request: str, persona: str = "xiaoy
     # script array contains only songs and TTS bridges (no greeting/closing)
     script = []
     for i, s in enumerate(picks):
+        song_id = s.id if not is_demo else (i + 1)
+        song_name = s.name if not is_demo else s["name"]
+        song_artist = s.artist if not is_demo else s["artist"]
         script.append({
             "type": "song",
-            "song_id": s.id,
-            "intro_text": f"接下来这首歌，{s.name}，来自{s.artist}。",
+            "song_id": song_id,
+            "intro_text": f"接下来这首歌，{song_name}，来自{song_artist}。",
         })
         if i < len(picks) - 1:
             next_s = picks[i + 1]
+            next_name = next_s.name if not is_demo else next_s["name"]
+            next_artist = next_s.artist if not is_demo else next_s["artist"]
             script.append({
                 "type": "tts",
-                "text": f"听完这首，我们来听{next_s.artist}的{next_s.name}。",
+                "text": f"听完这首，我们来听{next_artist}的{next_name}。",
             })
 
     closing = f"今天的音乐到这里。我是{p['name']}，下次再见。"

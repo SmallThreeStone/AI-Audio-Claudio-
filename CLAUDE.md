@@ -47,11 +47,7 @@ cd frontend && npm run dev
 
 ## 当前版本
 
-V3.2 — 多用户数据隔离、AuthMiddleware 身份注入、全链路 session/WS 隔离、管理后台图表、设备隔离播放、移动端优化、PWA 安全区适配、Docker 部署
-
-## 演进路线图
-
-参见记忆系统：`project_upgrade_roadmap.md` — 向 Claudio 级个性化演进的三阶段规划
+V4.2 — 桌面端两栏布局、18 项全量优化（日志/性能/UX）、多用户数据隔离、AuthMiddleware 身份注入、管理后台图表、PWA 安全区适配、Docker 部署
 
 ## 环境要求
 

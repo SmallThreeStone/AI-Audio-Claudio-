@@ -1,8 +1,9 @@
 import { useStore } from '../../store'
 import { recordFeedback } from '../../api/radio'
+import { trackEvent } from '../../api/analytics'
 
 export default function FeedbackButtons() {
-  const { currentItem, queue, setQueue } = useStore()
+  const { currentItem, queue, setQueue, currentIndex } = useStore()
 
   if (!currentItem || currentItem.item_type.startsWith('tts')) return null
 
@@ -11,13 +12,52 @@ export default function FeedbackButtons() {
 
     try {
       await recordFeedback(currentItem.id, feedback)
-      // Update local state
-      const updated = queue.map((item) =>
+      trackEvent(feedback === 'liked' ? 'feedback_like' : 'feedback_dislike', {
+        song_name: currentItem.song_name,
+        artist: currentItem.artist,
+      })
+
+      let updated = queue.map((item) =>
         item.id === currentItem.id ? { ...item, user_feedback: feedback } : item
       )
+
+      // On dislike, move same-artist upcoming songs to end of queue
+      if (feedback === 'disliked' && currentItem.artist) {
+        const targetArtist = currentItem.artist
+        const currentPos = currentItem.position
+
+        // Partition upcoming items: keep different artists first, same artist last
+        const before: typeof queue = []
+        const sameArtist: typeof queue = []
+        const after: typeof queue = []
+        let foundCurrent = false
+
+        for (const item of updated) {
+          if (item.id === currentItem.id) {
+            before.push(item)
+            foundCurrent = true
+            continue
+          }
+          if (!foundCurrent) {
+            before.push(item)
+          } else if (item.item_type.startsWith('tts')) {
+            // Don't reorder TTS items
+            after.push(item)
+          } else if (item.artist === targetArtist) {
+            sameArtist.push(item)
+          } else {
+            after.push(item)
+          }
+        }
+
+        updated = [...before, ...after, ...sameArtist]
+        // Re-assign positions
+        updated = updated.map((item, i) => ({ ...item, position: i }))
+      }
+
       setQueue(updated)
-    } catch {
-      // silent
+    } catch (e) {
+      console.warn('Feedback submit failed:', e)
     }
   }
 

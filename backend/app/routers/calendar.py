@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import FRONTEND_URL
 from ..database import get_session
 from ..models.user import User
 from ..services.calendar_service import (
@@ -62,7 +63,7 @@ async def calendar_callback(code: str, state: str = "", session: AsyncSession = 
         raise HTTPException(status_code=400, detail="Missing user identity in OAuth state")
     success = await handle_callback(session, code, user_id)
     if success:
-        return RedirectResponse(url="http://localhost:5173?calendar=connected")
+        return RedirectResponse(url=f"{FRONTEND_URL}?calendar=connected")
     raise HTTPException(status_code=500, detail="Failed to store credentials")
 
 

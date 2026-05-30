@@ -2,7 +2,7 @@ import { useStore } from '../../store'
 import QueueItem from './QueueItem'
 
 export default function QueuePanel({ compact }: { compact?: boolean }) {
-  const { queue, session, currentIndex } = useStore()
+  const { queue, session, currentIndex, demoMode } = useStore()
 
   const validItems = queue.filter(
     (item) => item.status !== 'error' && item.status !== 'skipped'
@@ -18,6 +18,11 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
         <h3 className={`font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider ${compact ? 'text-[11px]' : 'text-[10px] sm:text-xs'}`}>
           播放队列
         </h3>
+        {demoMode && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-radio-accent)]/20 text-[var(--color-radio-accent)]">
+            体验模式
+          </span>
+        )}
         <span className={`text-[var(--color-radio-muted)] ${compact ? 'text-[11px]' : 'text-[10px] sm:text-xs'}`}>
           {upcoming.length} 项
         </span>

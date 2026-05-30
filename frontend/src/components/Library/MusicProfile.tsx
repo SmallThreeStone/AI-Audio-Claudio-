@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import type { MusicProfile } from '../../types'
-import { getMusicProfile } from '../../api/radio'
+import { getMusicProfile, generateFromProfile } from '../../api/radio'
+import { getClientId } from '../../utils/clientId'
+import { useStore } from '../../store'
 
 const MOOD_COLORS: Record<string, { bg: string; text: string }> = {
   欢快: { bg: 'rgba(234, 179, 8, 0.2)', text: '#eab308' },
@@ -28,17 +30,33 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
   const [profile, setProfile] = useState<MusicProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const { selectedPersona, setIsGenerating, setDemoMode, demoMode } = useStore()
 
   const fetchProfile = () => {
     setLoading(true)
     setError(false)
     getMusicProfile()
       .then(setProfile)
-      .catch(() => setError(true))
+      .catch((e) => { console.warn('Music profile fetch failed:', e); setError(true) })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { fetchProfile() }, [])
+
+  const handleGenerateRadio = async () => {
+    if (generating) return
+    setGenerating(true)
+    setIsGenerating(true)
+    try {
+      await generateFromProfile(selectedPersona, getClientId())
+      if (demoMode) setDemoMode(true)
+    } catch (e) {
+      console.error('Failed to generate radio from profile:', e)
+      setIsGenerating(false)
+    }
+    setGenerating(false)
+  }
 
   if (loading) {
     return (
@@ -103,9 +121,18 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
             <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider">
               音乐画像
             </h3>
-            <button onClick={fetchProfile} className="text-[10px] text-[var(--color-radio-accent)]/60 hover:text-[var(--color-radio-accent)]">
-              刷新
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={fetchProfile} className="text-[10px] text-[var(--color-radio-accent)]/60 hover:text-[var(--color-radio-accent)]">
+                刷新
+              </button>
+              <button
+                onClick={handleGenerateRadio}
+                disabled={generating}
+                className="text-[10px] px-2 py-1 rounded-full bg-[var(--color-radio-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {generating ? '生成中...' : '生成专属电台'}
+              </button>
+            </div>
           </div>
           <p className="text-xs text-[var(--color-radio-muted)]">
             {profile.total_songs > 0 && <>{profile.total_songs} 首歌曲</>}
@@ -122,12 +149,21 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
 
       {/* Stats summary (hideHeader mode only — already hidden in header) */}
       {hideHeader && (
-        <p className="text-[11px] text-[var(--color-radio-muted)]">
-          {profile.total_songs > 0 && <>{profile.total_songs} 首歌曲</>}
-          {profile.total_likes > 0 && <> · {profile.total_likes} 次喜欢</>}
-          {profile.total_listens > 0 && <> · {profile.total_listens} 次收听</>}
-          {profile.top_artists.length > 0 && <> · {profile.top_artists[0].name} 等</>}
-        </p>
+        <>
+          <p className="text-[11px] text-[var(--color-radio-muted)]">
+            {profile.total_songs > 0 && <>{profile.total_songs} 首歌曲</>}
+            {profile.total_likes > 0 && <> · {profile.total_likes} 次喜欢</>}
+            {profile.total_listens > 0 && <> · {profile.total_listens} 次收听</>}
+            {profile.top_artists.length > 0 && <> · {profile.top_artists[0].name} 等</>}
+          </p>
+          <button
+            onClick={handleGenerateRadio}
+            disabled={generating}
+            className="w-full mt-2 text-[11px] px-3 py-1.5 rounded-lg bg-[var(--color-radio-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {generating ? '生成中...' : '生成专属电台'}
+          </button>
+        </>
       )}
 
       {/* Top Artists */}

@@ -20,7 +20,8 @@ export default function SpeakerSelector() {
       if (devices.length === 0 && dlnaDevices.length === 0) {
         setError('未发现 DLNA 设备')
       }
-    } catch {
+    } catch (e) {
+      console.warn('DLNA discover failed:', e)
       if (dlnaDevices.length === 0) setError('搜索失败')
     } finally {
       setIsDiscovering(false)
@@ -38,7 +39,8 @@ export default function SpeakerSelector() {
           ? `${currentItem.song_name} - ${currentItem.artist || 'AI Radio'}`
           : 'AI Radio'
         await pushToDevice(device.location, currentItem.song_id, title)
-      } catch {
+      } catch (e) {
+        console.warn('DLNA push failed:', e)
         setError('推送失败')
       }
     }

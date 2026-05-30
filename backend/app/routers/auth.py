@@ -104,6 +104,11 @@ async def qr_status(request: Request, key: str, session: AsyncSession = Depends(
 
             await session.commit()
 
+            # Check if user needs auto-sync
+            from sqlalchemy import func as _func
+            from ..models.song import Song
+            song_count = (await session.execute(select(_func.count()).select_from(Song))).scalar() or 0
+
             return {
                 "code": 803,
                 "message": "登录成功",
@@ -112,6 +117,7 @@ async def qr_status(request: Request, key: str, session: AsyncSession = Depends(
                 "role": user.role,
                 "user_id": user.id,
                 "client_id": user.client_id,
+                "auto_sync": song_count == 0,
             }
 
     return {"code": code, "message": message}
@@ -207,6 +213,11 @@ async def phone_login(request: Request, session: AsyncSession = Depends(get_sess
 
         await session.commit()
 
+        # Check if user needs auto-sync
+        from sqlalchemy import func as _func
+        from ..models.song import Song
+        song_count = (await session.execute(select(_func.count()).select_from(Song))).scalar() or 0
+
         return {
             "code": 200,
             "message": "登录成功",
@@ -215,6 +226,7 @@ async def phone_login(request: Request, session: AsyncSession = Depends(get_sess
             "role": user.role,
             "user_id": user.id,
             "client_id": user.client_id,
+            "auto_sync": song_count == 0,
         }
 
     return {"code": 500, "message": "用户不存在"}

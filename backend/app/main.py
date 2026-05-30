@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from .database import init_db, async_session
 from .models.user import User
-from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar, admin
+from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar, admin, analytics
 from .services.sidecar_manager import sidecar
 from .utils.auth import AuthMiddleware
 
@@ -102,7 +102,7 @@ async def lifespan(app: FastAPI):
     await sidecar.stop()
 
 
-app = FastAPI(title="AI Radio - Claudio FM", version="3.2.0", lifespan=lifespan)
+app = FastAPI(title="AI Radio - Claudio FM", version="4.2.0", lifespan=lifespan)
 
 # CORS: allow all origins in dev; configure CORS_ORIGINS env var for production
 _allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -123,6 +123,7 @@ app.include_router(ws.router)
 app.include_router(dlna.router)
 app.include_router(calendar.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)
 
 # Middleware order (innermost → outermost): CORS → Auth → RateLimit
 # CORS already added above. AuthMiddleware injects request.state.user_id.
@@ -157,7 +158,7 @@ async def health():
         from .database import async_session
         async with async_session() as db:
             await db.execute(select(1))
-        return {"status": "ok", "db": "ok", "version": "3.2.0"}
+        return {"status": "ok", "db": "ok", "version": "4.2.0"}
     except Exception:
         return JSONResponse(status_code=503, content={"status": "error", "db": "unavailable"})
 

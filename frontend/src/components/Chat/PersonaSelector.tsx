@@ -9,7 +9,7 @@ export default function PersonaSelector() {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    getPersonas().then(setPersonas).catch(() => {})
+    getPersonas().then(setPersonas).catch((e) => { console.warn('Personas fetch failed:', e) })
   }, [])
 
   const current = personas.find((p) => p.id === selectedPersona) || personas[0]

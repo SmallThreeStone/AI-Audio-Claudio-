@@ -250,3 +250,31 @@ async def check_refill(db: AsyncSession, session_id: int) -> bool:
             await ws_manager.broadcast_to_user(session.user_id or 0, _session_status_msg(session))
 
     return False
+
+
+async def replace_upcoming(db: AsyncSession, session_id: int, script: dict, current_position: int) -> int:
+    """Replace all upcoming queue items with a new script (used for mid-session mood adjustment)."""
+    # Delete all upcoming items
+    delete_result = await db.execute(
+        select(QueueItem).where(
+            QueueItem.session_id == session_id,
+            QueueItem.position > current_position,
+        )
+    )
+    to_delete = delete_result.scalars().all()
+    for item in to_delete:
+        await db.delete(item)
+    await db.flush()
+
+    # Build new items starting from current_position + 1
+    new_count = await build_queue_from_script(db, script, session_id, start_position=current_position + 1)
+
+    # Update session total_items
+    session_result = await db.execute(select(DJSession).where(DJSession.id == session_id))
+    s = session_result.scalar()
+    if s:
+        s.total_items = current_position + 1 + new_count
+        s.status = "ready"
+
+    await db.commit()
+    return new_count

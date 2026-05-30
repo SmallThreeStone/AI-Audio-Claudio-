@@ -37,8 +37,8 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
     try {
       const data = await getPlaylists()
       setPlaylists(data)
-    } catch {
-      // silent
+    } catch (e) {
+      console.warn('Playlists load failed:', e)
     }
   }
 
@@ -56,7 +56,8 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
         setNotice('网易云登录已过期，请重新扫码登录')
         return
       }
-    } catch {
+    } catch (e) {
+      console.warn('Auth status check failed:', e)
       setNotice('网络异常，请稍后重试')
       return
     }
@@ -72,7 +73,8 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
         setNotice(`导入成功！${result.synced} 个歌单，${result.new_songs} 首歌曲`)
         await loadPlaylists()
       }
-    } catch {
+    } catch (e) {
+      console.warn('Playlist sync failed:', e)
       setNotice('同步失败，请确保后端服务已启动')
     }
     setSyncing(false)

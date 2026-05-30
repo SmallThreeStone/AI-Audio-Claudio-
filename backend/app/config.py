@@ -43,6 +43,12 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 CALENDAR_ENABLED = os.getenv("CALENDAR_ENABLED", "false").lower() == "true"
 
+# Demo mode: allow experience without NetEase login
+DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true"
+
+# Frontend URL (for OAuth redirects)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 # Admin password (SHA256 hash). Default: "313977236"
 ADMIN_PASSWORD_HASH = os.getenv(
     "ADMIN_PASSWORD_HASH",

@@ -5,6 +5,7 @@ import LoginModal from './components/Login/LoginModal'
 import Layout from './components/Layout/Layout'
 import AdminDashboard from './components/Admin/AdminDashboard'
 import InstallPrompt from './components/PWA/InstallPrompt'
+import OnboardingOverlay from './components/Onboarding/OnboardingOverlay'
 import MobileNav from './components/Layout/MobileNav'
 import type { MobileTab } from './components/Layout/MobileNav'
 import RadioPlayer from './components/Player/RadioPlayer'
@@ -19,6 +20,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 
 import { getAuthStatus, verifyAdminPassword } from './api/auth'
 import { getClientId } from './utils/clientId'
+import { trackEvent } from './api/analytics'
 
 function AdminAuthGate({ onVerify }: { onVerify: () => void }) {
   const { setShowAdmin } = useStore()
@@ -38,7 +40,8 @@ function AdminAuthGate({ onVerify }: { onVerify: () => void }) {
       } else {
         setError(result.message || '密码错误')
       }
-    } catch {
+    } catch (e) {
+      console.warn('Admin password verification failed:', e)
       setError('验证服务异常')
     }
     setLoading(false)
@@ -151,6 +154,7 @@ function MainApp() {
   // Initialize client identity on mount
   useEffect(() => {
     setClientId(getClientId())
+    trackEvent('app_open')
   }, [])
 
   // Check backend session on mount (survives page refresh)
@@ -194,7 +198,7 @@ function MainApp() {
   return (
     <div className="radio-bg min-h-screen" onTouchStart={handlePtrStart} onTouchMove={handlePtrMove} onTouchEnd={handlePtrEnd}>
       {!isLoggedIn ? (
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="min-h-screen flex items-center justify-center" data-onboarding="login">
           <LoginModal />
         </div>
       ) : showAdmin ? (
@@ -214,6 +218,7 @@ function MainApp() {
                 {/* Collapsible playlists */}
                 <button
                   onClick={() => setShowPlaylists(!showPlaylists)}
+                  data-onboarding="sync"
                   className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider hover:text-[var(--color-radio-text)] transition-colors"
                 >
                   <svg className={`w-3 h-3 transition-transform ${showPlaylists ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -256,7 +261,7 @@ function MainApp() {
             {/* Desktop main — full-width player area */}
             <main className="flex-1 flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 hidden lg:flex">
               <RadioPlayer />
-              <ChatInput />
+              <div data-onboarding="chat"><ChatInput /></div>
             </main>
           </div>
         </Layout>
@@ -266,6 +271,7 @@ function MainApp() {
       <ShortcutHelp />
       <SettingsPanel />
       <InstallPrompt />
+      <OnboardingOverlay />
       <MobileNav active={mobileTab} onChange={setMobileTab} />
 
       {/* Landscape overlay — prompts user to rotate on short screens */}

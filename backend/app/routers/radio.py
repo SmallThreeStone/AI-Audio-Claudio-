@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, Integer, case
 from pydantic import BaseModel
 
+from ..config import DEMO_MODE
 from ..database import get_session
 from ..models.user import User
 from ..models.dj_session import DJSession
@@ -22,6 +23,29 @@ from ..utils.broadcast import ws_manager
 
 logger = logging.getLogger(__name__)
 
+import os, json as _json
+
+def _load_demo_songs() -> list[dict]:
+    demo_path = os.path.join(os.path.dirname(__file__), "..", "data", "demo_songs.json")
+    with open(demo_path, "r", encoding="utf-8") as f:
+        return _json.load(f)
+
+
+def _demo_script_variant(script: dict) -> dict:
+    """Convert song items to TTS so the demo plays as a voice-only DJ experience."""
+    new_script_items = []
+    for entry in script.get("script", []):
+        if entry["type"] == "song":
+            new_script_items.append({
+                "type": "tts",
+                "text": entry.get("intro_text", f"接下来推荐一首歌。"),
+            })
+        else:
+            new_script_items.append(entry)
+    script = dict(script)
+    script["script"] = new_script_items
+    return script
+
 router = APIRouter(prefix="/api/radio", tags=["radio"])
 
 
@@ -35,9 +59,20 @@ class RadioRequest(BaseModel):
     client_id: str = ""
 
 
+class ProfileRadioRequest(BaseModel):
+    persona: str = "xiaoyu"
+    client_id: str = ""
+
+
 class FeedbackRequest(BaseModel):
     queue_item_id: int
     feedback: str  # 'liked' or 'disliked'
+
+
+class AdjustRequest(BaseModel):
+    session_id: int
+    new_mood_text: str
+    client_id: str = ""
 
 
 class ListenEventRequest(BaseModel):
@@ -74,7 +109,10 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     count_result = await session.execute(select(func.count()).select_from(Song))
     total = count_result.scalar() or 0
     if total == 0:
-        raise HTTPException(status_code=400, detail="No songs in library. Import playlists first.")
+        if DEMO_MODE:
+            demo_songs = _load_demo_songs()
+        else:
+            raise HTTPException(status_code=400, detail="No songs in library. Import playlists first.")
 
     # Fetch weather context
     client_ip = req.client.host if req.client else "127.0.0.1"
@@ -112,9 +150,12 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
 
     try:
         await _progress("analyzing", "解读心情，构思歌单...")
-        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id)
+        script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id, demo_songs=demo_songs if total == 0 else None)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
+        # Demo mode: convert song items to TTS so the DJ voice demo works without real songs
+        if total == 0 and DEMO_MODE:
+            script = _demo_script_variant(script)
         await session.commit()
 
         await _progress("building", "AI 正在为你精选歌曲...")
@@ -129,6 +170,153 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"session_id": dj_session.id, "message": "AI DJ is preparing your session..."}
+
+
+@router.post("/generate-from-profile")
+async def generate_from_profile(body: ProfileRadioRequest, req: Request, session: AsyncSession = Depends(get_session)):
+    """Generate a radio session based on user's music taste profile (no text input needed)."""
+    from ..services.profile_builder import build_profile_prompt
+
+    user_id = _user_id_from(req)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    user_result = await session.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar()
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+    # Check song library
+    count_result = await session.execute(select(func.count()).select_from(Song))
+    total = count_result.scalar() or 0
+    if total == 0:
+        if DEMO_MODE:
+            demo_songs = _load_demo_songs()
+        else:
+            raise HTTPException(status_code=400, detail="No songs in library. Import playlists first.")
+
+    # Build prompt from music profile
+    profile_prompt = await build_profile_prompt(session, user_id)
+
+    # Stop any currently active session
+    active_result = await session.execute(
+        select(DJSession)
+        .where(DJSession.user_id == user_id, DJSession.status.in_(["ready", "playing", "generating", "refilling"]))
+        .order_by(DJSession.created_at.desc())
+        .limit(1)
+    )
+    active = active_result.scalar()
+    if active:
+        active.status = "completed"
+        await session.commit()
+        await ws_manager.broadcast_to_user(user_id, _session_status_msg(active))
+
+    # Fetch weather context
+    client_ip = req.client.host if req.client else "127.0.0.1"
+    weather_summary = await get_weather_summary(client_ip)
+
+    # Fetch calendar context
+    calendar_summary = None
+    try:
+        events = await get_upcoming_events(session, user_id)
+        calendar_summary = build_calendar_summary(events)
+    except Exception:
+        pass
+
+    # Create session
+    dj_session = DJSession(
+        user_id=user.id,
+        user_request=profile_prompt,
+        status="generating",
+        persona=body.persona,
+        weather_summary=weather_summary,
+    )
+    session.add(dj_session)
+    await session.commit()
+
+    await ws_manager.broadcast_to_user(user_id, _session_status_msg(dj_session))
+
+    async def _progress(stage: str, message: str):
+        await ws_manager.broadcast_to_user(user_id, {
+            "type": "generation_progress",
+            "session_id": dj_session.id,
+            "stage": stage,
+            "message": message,
+        })
+
+    try:
+        await _progress("analyzing", "解读你的音乐品味，构思专属歌单...")
+        script = await generate_radio_script(session, profile_prompt, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id, demo_songs=demo_songs if total == 0 else None)
+        dj_session.ai_response_raw = str(script)
+        dj_session.session_theme = script.get("session_theme", "")
+        if total == 0 and DEMO_MODE:
+            script = _demo_script_variant(script)
+        await session.commit()
+
+        await _progress("building", "AI 正在为你精选歌曲...")
+        await build_queue_from_script(session, script, dj_session.id, progress_callback=_progress)
+
+        await _broadcast_queue(session, dj_session.id, body.client_id)
+    except Exception as e:
+        logger.error("Profile radio generation error: %s", e)
+        dj_session.status = "error"
+        await session.commit()
+        await ws_manager.broadcast_to_user(user_id, _session_status_msg(dj_session))
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"session_id": dj_session.id, "message": "AI DJ is preparing your personalized session..."}
+
+
+@router.post("/adjust")
+async def adjust_mood(body: AdjustRequest, req: Request, session: AsyncSession = Depends(get_session)):
+    """Mid-session mood adjustment: replace upcoming tracks to match a new mood."""
+    user_id = _user_id_from(req)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+    # Verify session belongs to user
+    result = await session.execute(
+        select(DJSession).where(
+            DJSession.id == body.session_id,
+            DJSession.user_id == user_id,
+            DJSession.status.in_(["ready", "playing"]),
+        )
+    )
+    dj_session = result.scalar()
+    if not dj_session:
+        raise HTTPException(status_code=404, detail="Active session not found")
+
+    # Get current position
+    current_pos = dj_session.played_items
+
+    # Get recently played song IDs to avoid repeats
+    recent = await session.execute(
+        select(QueueItem.song_id)
+        .where(QueueItem.session_id == body.session_id, QueueItem.item_type == "song", QueueItem.song_id != None)
+        .order_by(QueueItem.position.desc())
+        .limit(20)
+    )
+    recent_ids = [r[0] for r in recent.all() if r[0]]
+
+    from ..services.dj_engine import generate_adjustment
+    from ..services.queue_manager import replace_upcoming
+
+    try:
+        script = await generate_adjustment(
+            session,
+            dj_session.user_request,
+            body.new_mood_text,
+            dj_session.session_theme or "",
+            recent_ids,
+            count=5,
+            persona=dj_session.persona or "xiaoyu",
+        )
+        await replace_upcoming(session, body.session_id, script, current_pos)
+        await _broadcast_queue(session, body.session_id, body.client_id)
+    except Exception as e:
+        logger.error("Adjust mood error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"status": "ok", "message": "Queue adjusted to new mood"}
 
 
 @router.get("/sessions")
@@ -331,6 +519,18 @@ async def get_greeting(request: Request, session: AsyncSession = Depends(get_ses
     except Exception:
         pass
     return await build_greeting(session, weather_summary, user_id)
+
+
+@router.get("/demo-status")
+async def demo_status(session: AsyncSession = Depends(get_session)):
+    from sqlalchemy import func
+    count_result = await session.execute(select(func.count()).select_from(Song))
+    total = count_result.scalar() or 0
+    return {
+        "demo_available": total == 0 and DEMO_MODE,
+        "song_count": total,
+        "message": "No songs yet. Experience a demo to see what Claudio FM can do." if total == 0 and DEMO_MODE else None,
+    }
 
 
 @router.post("/feedback")

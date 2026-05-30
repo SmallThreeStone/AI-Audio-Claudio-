@@ -109,6 +109,9 @@ class FishAudioProvider(BaseTTSProvider):
 def _get_provider(provider_name: str | None = None) -> BaseTTSProvider:
     name = provider_name or TTS_PROVIDER
     if name == "fish":
+        if not FISH_AUDIO_API_KEY or FISH_AUDIO_API_KEY == "your_api_key_here":
+            logger.warning("Fish Audio API key not configured, falling back to Edge TTS")
+            return EdgeTTSProvider()
         return FishAudioProvider()
     return EdgeTTSProvider()
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../../store'
 import { sendCaptcha, phoneLogin as phoneLoginApi } from '../../api/auth'
 import { startQrLogin, checkQrStatus } from '../../api/auth'
+import { trackEvent } from '../../api/analytics'
 
 type LoginTab = 'phone' | 'qr'
 type LoginMode = 'captcha' | 'password'
@@ -237,7 +238,8 @@ function QrLogin({
             setStatusText('请在手机上确认登录')
             break
           case 803:
-            setStatusText('登录成功！')
+            trackEvent('login_success', { method: 'qr' })
+            setStatusText(result.auto_sync ? '登录成功，正在导入你的歌单...' : '登录成功！')
             if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
             clearQrInfo()
             setUser({
@@ -248,6 +250,17 @@ function QrLogin({
               login_status: 'logged_in',
               role: (result.role as 'admin' | 'user') || 'user',
             })
+            if (result.auto_sync) {
+              import('../../api/playlists').then(({ syncPlaylists }) => {
+                syncPlaylists().then(() => {
+                  import('../../api/playlists').then(({ getPlaylists }) => {
+                    getPlaylists().then((pls) => {
+                      useStore.getState().setPlaylists(pls)
+                    }).catch(() => {})
+                  })
+                }).catch(() => {})
+              })
+            }
             break
         }
       } catch {
@@ -262,6 +275,7 @@ function QrLogin({
     setStatusText('正在获取二维码...')
     try {
       const { qr_key, qr_url } = await startQrLogin()
+      trackEvent('login_start', { method: 'qr' })
       setQrInfo(qr_key, qr_url)
       setStatusText('请使用网易云音乐 APP 扫码登录')
       doPoll(qr_key)

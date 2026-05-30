@@ -7,10 +7,11 @@ import {
   type AdminOverview, type AdminUser, type AdminSession, type AdminListenEvent,
   type AdminTrend, type AdminHourly, type AdminAnomaly, type UserProfile,
 } from '../../api/admin'
+import { getAnalyticsEvents } from '../../api/analytics'
 
 const ChartsSection = lazy(() => import('./AdminCharts'))
 
-type Tab = 'users' | 'sessions' | 'listening' | 'anomalies'
+type Tab = 'users' | 'sessions' | 'listening' | 'anomalies' | 'analytics'
 
 const statusBadge: Record<string, string> = {
   logged_in: 'bg-green-500/20 text-green-400',
@@ -45,6 +46,7 @@ export default function AdminDashboard() {
   const [trends, setTrends] = useState<AdminTrend[]>([])
   const [hourly, setHourly] = useState<AdminHourly[]>([])
   const [anomalies, setAnomalies] = useState<AdminAnomaly[]>([])
+  const [analyticsData, setAnalyticsData] = useState<{ event_counts: { event_name: string; count: number }[]; daily_events: { date: string; count: number }[]; total_events: number } | null>(null)
   const [viewProfile, setViewProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -71,7 +73,8 @@ export default function AdminDashboard() {
       getAdminTrends(),
       getAdminHourly(),
       getAdminAnomalies(),
-    ]).then(([ov, us, ss, ev, tr, hr, an]) => {
+      getAnalyticsEvents().catch(() => null),
+    ]).then(([ov, us, ss, ev, tr, hr, an, anl]) => {
       setOverview(ov)
       setUsers(us)
       setSessions(ss)
@@ -79,6 +82,7 @@ export default function AdminDashboard() {
       setTrends(tr)
       setHourly(hr)
       setAnomalies(an.alerts)
+      if (anl) setAnalyticsData(anl)
     }).catch((e) => { console.warn('Admin hourly/trends load failed:', e) }).finally(() => setLoading(false))
   }, [])
 
@@ -97,8 +101,8 @@ export default function AdminDashboard() {
     try {
       const profile = await getUserProfile(userId)
       setViewProfile(profile)
-    } catch {
-      // 403 etc
+    } catch (e) {
+      console.warn('User profile load failed:', e)
     }
   }
 
@@ -115,6 +119,7 @@ export default function AdminDashboard() {
     { key: 'sessions', label: '会话记录' },
     { key: 'listening', label: '播放记录' },
     { key: 'anomalies', label: '异常告警', badge: anomalies.length },
+    { key: 'analytics', label: '事件统计' },
   ]
 
   return (
@@ -188,6 +193,7 @@ export default function AdminDashboard() {
           {activeTab === 'sessions' && <SessionsTable sessions={sessions} isOwner={isOwner} onForceStop={handleForceStop} />}
           {activeTab === 'listening' && <ListeningTable events={events} />}
           {activeTab === 'anomalies' && <AnomaliesPanel alerts={anomalies} />}
+          {activeTab === 'analytics' && <AnalyticsPanel data={analyticsData} />}
         </div>
       </div>
 
@@ -433,6 +439,54 @@ function ListeningTable({ events }: { events: AdminListenEvent[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+type AnalyticsEventsData = { event_counts: { event_name: string; count: number }[]; daily_events: { date: string; count: number }[]; total_events: number }
+
+function AnalyticsPanel({ data }: { data: AnalyticsEventsData | null }) {
+  if (!data) {
+    return <div className="p-6 text-center text-[var(--color-radio-muted)] text-sm">加载中...</div>
+  }
+  const maxDaily = Math.max(...data.daily_events.map(d => d.count), 1)
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[var(--color-radio-text)]">最近 7 天事件统计</h3>
+        <span className="text-xs text-[var(--color-radio-muted)]">共 {data.total_events} 事件</span>
+      </div>
+
+      {/* Daily bar chart */}
+      <div className="flex items-end gap-1 h-20">
+        {data.daily_events.map((d) => (
+          <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
+            <div
+              className="w-full rounded-t bg-[var(--color-radio-accent)]/60 hover:bg-[var(--color-radio-accent)] transition-colors min-h-[2px]"
+              style={{ height: `${Math.max((d.count / maxDaily) * 100, 2)}%` }}
+              title={`${d.date}: ${d.count}`}
+            />
+            <span className="text-[9px] text-[var(--color-radio-muted)]">{d.date}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Event type counts */}
+      <div className="space-y-1.5">
+        {data.event_counts.map((e) => (
+          <div key={e.event_name} className="flex items-center gap-2">
+            <span className="text-xs text-[var(--color-radio-text)] w-32 truncate">{e.event_name}</span>
+            <div className="flex-1 h-2 rounded-full bg-[var(--color-radio-border)] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[var(--color-radio-accent)]/70"
+                style={{ width: `${Math.max((e.count / (data.event_counts[0]?.count || 1)) * 100, 3)}%` }}
+              />
+            </div>
+            <span className="text-xs text-[var(--color-radio-muted)] w-8 text-right tabular-nums">{e.count}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -70,6 +70,11 @@ export async function getWeather() {
   return data as import('../types').WeatherInfo
 }
 
+export async function adjustMood(sessionId: number, newMoodText: string, clientId: string = '') {
+  const { data } = await api.post('/radio/adjust', { session_id: sessionId, new_mood_text: newMoodText, client_id: clientId })
+  return data as { status: string; message: string }
+}
+
 export async function getGreeting() {
   const { data } = await api.get('/radio/greeting')
   return data as {
@@ -79,7 +84,18 @@ export async function getGreeting() {
     time_mood: string
     recent_artists: string[]
     top_genre: string
+    personalized_prompts: string[]
   }
+}
+
+export async function generateFromProfile(persona: string = 'xiaoyu', clientId: string = '') {
+  const { data } = await api.post('/radio/generate-from-profile', { persona, client_id: clientId })
+  return data as { session_id: number; message: string }
+}
+
+export async function getDemoStatus() {
+  const { data } = await api.get('/radio/demo-status')
+  return data as { demo_available: boolean; song_count: number; message: string | null }
 }
 
 // DLNA

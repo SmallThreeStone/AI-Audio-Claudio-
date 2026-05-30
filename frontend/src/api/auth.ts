@@ -7,7 +7,7 @@ export async function startQrLogin() {
 
 export async function checkQrStatus(key: string) {
   const { data } = await api.get('/auth/qr/status', { params: { key } })
-  return data as { code: number; message: string; cookies?: Record<string, string>; nickname?: string; avatar_url?: string; role?: string; user_id?: number; client_id?: string }
+  return data as { code: number; message: string; cookies?: Record<string, string>; nickname?: string; avatar_url?: string; role?: string; user_id?: number; client_id?: string; auto_sync?: boolean }
 }
 
 export async function getAuthStatus() {
@@ -17,7 +17,7 @@ export async function getAuthStatus() {
 
 export async function phoneLogin(phone: string, password: string, countrycode?: string, captcha?: string) {
   const { data } = await api.post('/auth/login/phone', { phone, password, countrycode, captcha })
-  return data as { code: number; message: string; nickname?: string; avatar_url?: string; role?: string; user_id?: number; client_id?: string }
+  return data as { code: number; message: string; nickname?: string; avatar_url?: string; role?: string; user_id?: number; client_id?: string; auto_sync?: boolean }
 }
 
 export async function sendCaptcha(phone: string, countrycode?: string) {

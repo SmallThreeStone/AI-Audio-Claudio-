@@ -1,10 +1,19 @@
 import socket
 import time
 import asyncio
-from async_upnp_client.aiohttp import AiohttpRequester
-from async_upnp_client.client_factory import UpnpFactory
-from async_upnp_client.search import async_search as async_ssdp_search
-from async_upnp_client.profiles.dlna import DmrDevice
+
+try:
+    from async_upnp_client.aiohttp import AiohttpRequester
+    from async_upnp_client.client_factory import UpnpFactory
+    from async_upnp_client.search import async_search as async_ssdp_search
+    from async_upnp_client.profiles.dlna import DmrDevice
+    _UPNP_AVAILABLE = True
+except ImportError:
+    _UPNP_AVAILABLE = False
+    AiohttpRequester = None  # type: ignore
+    UpnpFactory = None  # type: ignore
+    async_ssdp_search = None  # type: ignore
+    DmrDevice = None  # type: ignore
 
 from ..config import LAN_IP
 
@@ -32,6 +41,8 @@ def get_lan_ip() -> str:
 
 async def discover_devices(force: bool = False) -> list[dict]:
     """Discover DLNA MediaRenderer devices on LAN via SSDP. Results cached for 60s."""
+    if not _UPNP_AVAILABLE:
+        return []
     now = time.time()
     if not force and _cache["devices"] and (now - _cache["ts"]) < _CACHE_TTL:
         return _cache["devices"]
@@ -68,6 +79,8 @@ async def _connect_device(location: str) -> DmrDevice:
 
 async def play_url(device_location: str, audio_url: str, title: str = "AI Radio") -> dict:
     """Push an audio URL to a DLNA renderer and start playback."""
+    if not _UPNP_AVAILABLE:
+        raise RuntimeError("DLNA/UPnP library not installed (async_upnp_client)")
     dmr = await _connect_device(device_location)
 
     try:
@@ -86,6 +99,8 @@ async def play_url(device_location: str, audio_url: str, title: str = "AI Radio"
 
 async def stop_device(device_location: str) -> dict:
     """Stop playback on a DLNA renderer."""
+    if not _UPNP_AVAILABLE:
+        raise RuntimeError("DLNA/UPnP library not installed (async_upnp_client)")
     dmr = await _connect_device(device_location)
     await dmr.async_stop()
     return {"status": "stopped"}
@@ -93,6 +108,8 @@ async def stop_device(device_location: str) -> dict:
 
 async def set_volume(device_location: str, volume: int) -> dict:
     """Set volume on a DLNA renderer (0-100)."""
+    if not _UPNP_AVAILABLE:
+        raise RuntimeError("DLNA/UPnP library not installed (async_upnp_client)")
     dmr = await _connect_device(device_location)
     try:
         rc = dmr.device.service("urn:schemas-upnp-org:service:RenderingControl:1")

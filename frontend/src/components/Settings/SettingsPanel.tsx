@@ -60,8 +60,8 @@ function TTSSection() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    getVoices().then((data) => { setVoices(data || []); setLoaded(true) }).catch(() => {})
-    getTtsProvider().then((p) => setProvider(p as 'edge' | 'fish')).catch(() => {})
+    getVoices().then((data) => { setVoices(data || []); setLoaded(true) }).catch((e) => { console.warn('TTS voices fetch failed:', e) })
+    getTtsProvider().then((p) => setProvider(p as 'edge' | 'fish')).catch((e) => { console.warn('TTS provider fetch failed:', e) })
   }, [])
 
   const handleProviderChange = useCallback(async (p: 'edge' | 'fish') => {
@@ -69,7 +69,7 @@ function TTSSection() {
     try {
       await setTtsProvider(p)
       setProvider(p)
-    } catch { /* ignore */ }
+    } catch (e) { console.warn('TTS provider switch failed:', e) }
     setSaving(false)
   }, [])
 
@@ -145,7 +145,7 @@ function CalendarSection() {
   const [connecting, setConnecting] = useState(false)
 
   useEffect(() => {
-    getCalendarStatus().then((s) => setStatus(s ? { connected: s.connected, lastSync: s.last_sync } : null)).catch(() => {})
+    getCalendarStatus().then((s) => setStatus(s ? { connected: s.connected, lastSync: s.last_sync } : null)).catch((e) => { console.warn('Calendar status fetch failed:', e) })
   }, [])
 
   const handleConnect = async () => {
@@ -156,7 +156,7 @@ function CalendarSection() {
       if (data.auth_url) {
         window.location.href = data.auth_url
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn('Calendar connect failed:', e) }
     setConnecting(false)
   }
 
