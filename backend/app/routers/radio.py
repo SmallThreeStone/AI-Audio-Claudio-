@@ -502,7 +502,11 @@ async def list_personas():
 async def get_weather_info(request: Request):
     """Get structured weather + location data for header widget."""
     client_ip = request.client.host if request.client else "127.0.0.1"
-    data = await get_weather_structured(client_ip)
+    try:
+        import asyncio
+        data = await asyncio.wait_for(get_weather_structured(client_ip), timeout=2.0)
+    except Exception:
+        return {"available": False}
     if not data:
         return {"available": False}
     return {"available": True, **data}
@@ -515,7 +519,8 @@ async def get_greeting(request: Request, session: AsyncSession = Depends(get_ses
     client_ip = request.client.host if request.client else "127.0.0.1"
     weather_summary = None
     try:
-        weather_summary = await get_weather_summary(client_ip)
+        import asyncio
+        weather_summary = await asyncio.wait_for(get_weather_summary(client_ip), timeout=2.0)
     except Exception:
         pass
     return await build_greeting(session, weather_summary, user_id)
@@ -848,8 +853,8 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
     song_map: dict[int, Song] = {}
     if song_ids:
         song_result = await db.execute(select(Song).where(Song.id.in_(song_ids)))
-        for s in song_result.scalars():
-            song_map[s.id] = s
+        for song in song_result.scalars():
+            song_map[song.id] = song
 
     enriched = []
     for qi in items:

@@ -70,7 +70,7 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
+              networkTimeoutSeconds: 25,
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 5,

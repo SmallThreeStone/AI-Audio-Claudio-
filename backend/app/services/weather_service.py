@@ -22,7 +22,7 @@ _VIBE_MAP = {
 async def locate_by_ip(client_ip: str) -> dict | None:
     """IP geolocation via ip-api.com (free, no API key). Returns {city, lat, lon, country} or None."""
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             if client_ip in ("127.0.0.1", "::1", "localhost") or client_ip.startswith("192.168.") or client_ip.startswith("10.") or client_ip.startswith("172."):
                 # Local/private IP: query server's own public IP location as fallback
                 resp = await client.get("http://ip-api.com/json/")
@@ -49,7 +49,7 @@ async def fetch_weather(lat: float, lon: float) -> dict | None:
         return None
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(
                 "https://api.openweathermap.org/data/2.5/weather",
                 params={

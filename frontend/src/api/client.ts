@@ -3,7 +3,7 @@ import { getClientId } from '../utils/clientId'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 60000,
 })
 
 // Inject X-Client-Id header on every request for multi-user isolation

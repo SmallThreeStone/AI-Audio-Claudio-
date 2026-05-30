@@ -45,9 +45,38 @@ cd frontend && npm run dev
   - `src/store/` — Zustand 全局状态
   - `src/api/` — API 客户端层
 
+## 开发规范
+
+### Git 工作流
+
+- **新功能开发必须在 `feature/` 分支上进行**，禁止直接在 `master` 上改动
+  - 分支命名: `feature/<功能简述>`，如 `feature/demo-mode`、`feature/share-card`
+  - 开发完成后合并回 `master`
+- **每次推送代码时**:
+  1. 按需更新 `README.md`（版本号、功能列表、版本历史等）
+  2. 将 feature 分支合并到 `master`
+  3. 推送到远程仓库
+- Commit 风格: `V<版本号> — <简短描述>`，如 `V4.4.0 — 产品体验升级`
+
+### 编码规范
+
+- **默认不写注释**，只在 WHY 不明显时加一行简短注释
+- 不写多行 docstring，不写 "used by X" / "added for Y" 类注释
+- 优先编辑现有文件，避免新建文件
+- 不做过度抽象：3 行相似代码好过 1 个过早的 helper
+- 不引入 feature flag 或向后兼容 shim，直接改
+- 不加不可能触发的错误处理、fallback 或验证
+- TypeScript 编译零错误才能提交
+
+### 任务执行
+
+- 多步骤任务使用 TaskCreate/TaskUpdate 追踪进度
+- 独立工作并行执行（同时启动多个 agent 或 tool call）
+- 每轮完成后简要汇报改动内容和下一步
+
 ## 当前版本
 
-V4.2 — 桌面端两栏布局、18 项全量优化（日志/性能/UX）、多用户数据隔离、AuthMiddleware 身份注入、管理后台图表、PWA 安全区适配、Docker 部署
+V4.4.0 — 产品体验升级：Demo模式 + 新手引导 + 个性化 + 画像电台 + 换心情 + 分享 + 埋点
 
 ## 环境要求
 
