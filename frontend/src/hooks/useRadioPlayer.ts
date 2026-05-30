@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { radioWS } from '../api/ws'
 import { skipTrack, skipToTrack, stopRadio, recordListenEvent } from '../api/radio'
 
-const playerLog = (...args: unknown[]) => { if (import.meta.env.DEV) playerLog(...args) }
+const playerLog = (...args: unknown[]) => { if (import.meta.env.DEV) console.log(...args) }
 import { getClientId } from '../utils/clientId'
 import { sharedAudioEl } from './useAudioVisualizer'
 
