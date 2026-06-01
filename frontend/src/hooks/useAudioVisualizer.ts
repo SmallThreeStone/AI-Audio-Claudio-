@@ -25,20 +25,28 @@ export function useAudioVisualizer() {
   const isAudioLoading = useStore((s) => s.isAudioLoading)
   const currentItem = useStore((s) => s.currentItem)
 
-  // Create AudioContext on mount, resume on first user interaction
+  // F34: Single AudioContext, survives React StrictMode double-mount.
+  // createMediaElementSource can only be called ONCE per audio element across
+  // the entire lifetime of all AudioContexts. StrictMode's first mount→unmount→remount
+  // cycle would close the first AudioContext, leaving the element permanently bound
+  // to a dead context. Module-level visualizerCtx prevents this.
   useEffect(() => {
-    const ctx = new AudioContext()
+    // Reuse existing ctx from previous StrictMode mount, or create new one
+    let ctx = visualizerCtx.current
+    if (!ctx || ctx.state === 'closed') {
+      ctx = new AudioContext()
+      visualizerCtx.current = ctx
+    }
+
     const analyser = ctx.createAnalyser()
     analyser.fftSize = window.innerWidth <= 768 ? 128 : 256
     analyser.smoothingTimeConstant = 0.8
     analyser.connect(ctx.destination)
-    visualizerCtx.current = ctx
     analyserRef.current = analyser
 
-    // F9: Track pending resume promise to avoid createMediaElementSource race
     const doResume = () => {
-      if (ctx.state === 'suspended' && !resumePromiseRef.current) {
-        resumePromiseRef.current = ctx.resume().then(() => {
+      if (ctx!.state === 'suspended' && !resumePromiseRef.current) {
+        resumePromiseRef.current = ctx!.resume().then(() => {
           resumePromiseRef.current = null
         }).catch(() => {
           resumePromiseRef.current = null
@@ -46,13 +54,11 @@ export function useAudioVisualizer() {
       }
     }
 
-    // Try to resume immediately (may work if there was prior user gesture)
     doResume()
 
-    // Also resume on first user interaction (click / touch / key)
     const resumeOnInteraction = () => {
       doResume()
-      if (ctx.state === 'running') {
+      if (ctx!.state === 'running') {
         document.removeEventListener('click', resumeOnInteraction)
         document.removeEventListener('touchstart', resumeOnInteraction)
         document.removeEventListener('keydown', resumeOnInteraction)
@@ -68,11 +74,14 @@ export function useAudioVisualizer() {
       document.removeEventListener('touchstart', resumeOnInteraction)
       document.removeEventListener('keydown', resumeOnInteraction)
       cancelAnimationFrame(rafRef.current)
-      ctx.close().catch(() => {})
-      visualizerCtx.current = null
+      // F34: Do NOT close the AudioContext — it would break createMediaElementSource
+      // bindings in StrictMode. Only disconnect sources and reset refs.
+      if (visualizerSource.current) {
+        try { visualizerSource.current.disconnect() } catch { /* ok */ }
+        visualizerSource.current = null
+      }
       analyserRef.current = null
-      visualizerSource.current = null
-      sharedAudioEl.current = null
+      attachedElRef.current = null
     }
   }, [])
 
@@ -113,8 +122,16 @@ export function useAudioVisualizer() {
       source.connect(analyser)
       visualizerSource.current = source
     } catch (e) {
-      // createMediaElementSource already called on this element (by a previous source).
-      // The old chain still works — audio routes through it.
+      // F34: createMediaElementSource already called on this element (React StrictMode
+      // double-mount, or HMR). Fall back to captureStream() which has no such limit.
+      try {
+        const stream = (audioEl as any).captureStream?.() || (audioEl as any).mozCaptureStream?.()
+        if (stream) {
+          const streamSource = ctx.createMediaStreamSource(stream)
+          streamSource.connect(analyser)
+          visualizerSource.current = streamSource as any
+        }
+      } catch { /* both approaches failed, audio plays without visualizer */ }
     }
   }, [])
 
