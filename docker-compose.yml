@@ -2,6 +2,7 @@ services:
   claudio-fm:
     build: .
     container_name: claudio-fm
+    working_dir: /app/backend
     ports:
       - "7236:8000"
     volumes:

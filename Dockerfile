@@ -36,6 +36,9 @@ RUN mkdir -p backend/data backend/data/tts_cache
 
 EXPOSE 8000
 
+WORKDIR /app/backend
+ARG CACHEBUST=1
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
 
