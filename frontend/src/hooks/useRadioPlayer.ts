@@ -4,7 +4,9 @@ import { useStore } from '../store'
 import { radioWS } from '../api/ws'
 import { skipTrack, skipToTrack, stopRadio, recordListenEvent } from '../api/radio'
 
-const playerLog = (...args: unknown[]) => { if (import.meta.env.DEV) console.log(...args) }
+const playerLog = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(`[${performance.now().toFixed(0)}ms]`, ...args)
+}
 import { getClientId } from '../utils/clientId'
 import { sharedAudioEl } from './useAudioVisualizer'
 
@@ -157,11 +159,14 @@ export function useRadioPlayer() {
 
           autoPlayBlockNoticeShown = false
           // F33: Find the ACTIVE playing audio node — onunlock→play() creates extra _sounds
-          // entries, so _sounds[0]._node may be stopped at pos 0 while _sounds[1]._node is playing.
           const getPlayingNode = () => {
-            const sounds: Array<{ _node?: HTMLAudioElement; _paused?: boolean }> = (howl as any)._sounds || []
+            const sounds: Array<{ _node?: HTMLAudioElement; _paused?: boolean; _seek?: number }> = (howl as any)._sounds || []
             return sounds.find(s => s._node && !s._paused)?._node
           }
+          const sounds0: Array<{ _paused?: boolean }> = (howl as any)._sounds || []
+          playerLog('[Player] onplay _sounds count:', sounds0.length,
+            sounds0.map((s: any, i: number) => `[${i}]:paused=${s._paused},readyState=${s._node?.readyState},src=${s._node?.src?.substring(0,30)}`).join(' '))
+
           const playingNode = getPlayingNode()
           if (playingNode) sharedAudioEl.current = playingNode
 
@@ -176,21 +181,27 @@ export function useRadioPlayer() {
 
           if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
           let stuckSeconds = 0
+          let tick = 0
           progressRef.current = setInterval(() => {
+            tick++
             if (token !== currentToken || howl !== howlRef.current) {
+              playerLog('[Player] interval SELF-CLEANUP token:', token, 'current:', currentToken, 'howl===ref:', howl === howlRef.current)
               clearInterval(progressRef.current!)
               progressRef.current = undefined
               return
             }
-            // Read directly from the active HTMLAudioElement to avoid howl.seek() reading a dead sound
             const node = getPlayingNode() || ((howl as any)._sounds?.[0]?._node)
             const seek = node ? node.currentTime : (howl.seek() as number)
+            const howlSeek = howl.seek() as number
+            if (tick <= 3 || (tick % 5 === 0)) {
+              playerLog('[Player] tick', tick, 'nodeTime:', node?.currentTime?.toFixed(2), 'howlSeek:', howlSeek?.toFixed(2), 'paused:', node?.paused, 'muted:', node?.muted, 'readyState:', node?.readyState, 'ended:', node?.ended)
+            }
             setCurrentTime(seek)
             radioWS.send({ type: 'progress_report', queue_item_id: item.id, position_seconds: seek })
             if (seek < 0.05) {
               stuckSeconds++
               if (stuckSeconds >= 5) {
-                playerLog('[Player] STUCK — auto-skipping')
+                playerLog('[Player] STUCK — auto-skipping after', stuckSeconds, 'ticks at pos ~0')
                 clearInterval(progressRef.current!); progressRef.current = undefined
                 advanceTo(currentIdxRef.current + 1)
                 skipTrack()
