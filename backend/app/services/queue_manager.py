@@ -55,21 +55,33 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
         tts_tasks.append((item.id, greeting))
         position += 1
 
-    # F18: Batch-load all songs referenced in the script to avoid N+1 queries
+    # F18: Batch-load all songs referenced in the script to avoid N+1 queries.
+    # Also check playability — skip songs that are permanently unplayable.
     from ..models.song import Song
     song_ids_in_script = [e["song_id"] for e in script.get("script", []) if e["type"] == "song"]
-    existing_songs: set[int] = set()
+    song_info: dict[int, tuple[bool, str | None]] = {}  # song_id -> (has_playable_url, cached_stream_url)
     if song_ids_in_script:
-        batch_result = await db.execute(select(Song.id).where(Song.id.in_(song_ids_in_script)))
-        existing_songs = {r[0] for r in batch_result.all()}
+        batch_result = await db.execute(
+            select(Song.id, Song.has_playable_url, Song.cached_stream_url)
+            .where(Song.id.in_(song_ids_in_script))
+        )
+        for row in batch_result.all():
+            song_info[row[0]] = (bool(row[1]), row[2])
 
     # Script items
     for entry in script.get("script", []):
         if entry["type"] == "song":
             song_id = entry["song_id"]
 
-            # Verify song exists (lookup in pre-loaded set, not DB query)
-            if song_id not in existing_songs:
+            info = song_info.get(song_id)
+            if not info:
+                logger.warning("Skipping non-existent song_id=%d in script", song_id)
+                continue
+            has_url, cached = info
+            # Skip songs known to be permanently unplayable (no URL ever available)
+            if not has_url and not cached:
+                logger.warning("Skipping unplayable song_id=%d in script", song_id)
+                continue
                 logger.warning("Skipping non-existent song_id=%d in script", song_id)
                 continue
 
