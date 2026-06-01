@@ -9,7 +9,10 @@ export const sharedAudioEl: { current: HTMLAudioElement | null } = { current: nu
 let _ctx: AudioContext | null = null
 let _analyser: AnalyserNode | null = null
 let _source: MediaElementAudioSourceNode | null = null
-const _captured = new WeakSet<HTMLAudioElement>()  // track elements already captured
+const _captured = new WeakSet<HTMLAudioElement>()
+// F37: Exported for destroyHowl in useRadioPlayer — disconnect source on skip.
+// Maps audio element → MediaElementAudioSourceNode so we can find and disconnect.
+export const visSourceMap = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>()
 
 export function useAudioVisualizer() {
   const rafRef = useRef<number>(0)
@@ -72,19 +75,30 @@ export function useAudioVisualizer() {
 
     const alreadyCaptured = _captured.has(audioEl)
     if (import.meta.env.DEV) {
-      console.log(`[Vis] tryAttach captured=${alreadyCaptured} src=${audioEl.src?.substring(0,50)} readyState=${audioEl.readyState} ctxState=${_ctx.state}`)
+      console.log(`[Vis] tryAttach captured=${alreadyCaptured} src=${audioEl.src?.substring(0,50)} readyState=${audioEl.readyState}`)
     }
 
-    if (alreadyCaptured) return
+    if (alreadyCaptured) {
+      // F37: Element reused from Howler pool — reconnect its existing source
+      const existingSource = visSourceMap.get(audioEl)
+      if (existingSource) {
+        try { existingSource.disconnect() } catch {}
+        existingSource.connect(_analyser)
+        _source = existingSource
+        if (import.meta.env.DEV) console.log('[Vis] reconnected existing source')
+      }
+      return
+    }
 
     try {
       _source = _ctx.createMediaElementSource(audioEl)
       _source.connect(_analyser)
       _captured.add(audioEl)
+      visSourceMap.set(audioEl, _source)
       if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource OK')
     } catch (e) {
       _captured.add(audioEl)
-      if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource FAILED (already captured):', e)
+      if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource FAILED:', e)
     }
   }, [])
 

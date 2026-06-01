@@ -8,7 +8,7 @@ const playerLog = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.log(`[${performance.now().toFixed(0)}ms]`, ...args)
 }
 import { getClientId } from '../utils/clientId'
-import { sharedAudioEl } from './useAudioVisualizer'
+import { sharedAudioEl, visSourceMap } from './useAudioVisualizer'
 
 // Module-level guards survive React StrictMode double-mount in development,
 // which resets component refs and would otherwise cause double auto-play.
@@ -21,12 +21,19 @@ let currentToken = 0  // F30: global token — incremented on every track advanc
 function destroyHowl(h: Howl | null) {
   if (!h) return
   deadHowls.add(h)
-  // F37: Direct DOM mute before Howler stop — MediaElementAudioSourceNode
-  // bypasses Howler's volume control. Without this, old audio bleeds through
-  // the visualizer's AudioContext chain during skip/transition.
+  // F37: Disconnect AudioContext source before stopping Howler.
+  // MediaElementAudioSourceNode bypasses Howler's volume/mute — the only way
+  // to silence it is to disconnect from the analyser graph.
   const sounds: Array<{ _node?: HTMLAudioElement }> = (h as any)._sounds || []
   for (const s of sounds) {
-    if (s._node) s._node.muted = true
+    if (s._node) {
+      s._node.muted = true  // DOM-level mute (doesn't affect source, but belt & suspenders)
+      // Disconnect this element's source from visualizer graph
+      const src = visSourceMap.get(s._node)
+      if (src) {
+        try { src.disconnect() } catch {}
+      }
+    }
   }
   h.off('end')
   h.off('play')
