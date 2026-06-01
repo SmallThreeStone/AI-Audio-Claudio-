@@ -1,8 +1,8 @@
 # Stage 1: Build frontend
-FROM node:18-alpine AS frontend-build
+FROM node:18 AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci 2>/dev/null || npm install
+RUN npm install
 COPY frontend/ ./
 RUN npm run build
 
