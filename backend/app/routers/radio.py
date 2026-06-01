@@ -877,32 +877,23 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
             song_map[song.id] = song
 
     # F39: Refresh expired song URLs before presenting queue to user.
-    # Old sessions may have songs whose NetEase URLs have expired.
-    # If a URL can't be refreshed, the item is excluded from the response.
+    # Songs in the library should always be playable — if a URL expired, just refresh it.
     from ..services.audio_proxy import get_song_url
-    from ..models.user import User
     user_id = s.user_id
-    dead_items: set[int] = set()
     for qi in items:
-        if qi.item_type == "song" and qi.song_id:
-            if not qi.stream_url:
-                url = await get_song_url(db, qi.song_id, user_id)
-                if url:
-                    qi.stream_url = url
-                    qi.status = "ready"
-                else:
-                    dead_items.add(qi.id)
-                    logger.warning("[Queue] Excluding unplayable song song_id=%d item_id=%d from session %d",
-                                   qi.song_id, qi.id, s.id)
-    if dead_items:
-        await db.commit()
+        if qi.item_type == "song" and qi.song_id and not qi.stream_url:
+            url = await get_song_url(db, qi.song_id, user_id)
+            if url:
+                qi.stream_url = url
+                qi.status = "ready"
+                logger.info("[Queue] Refreshed URL for song_id=%d item_id=%d", qi.song_id, qi.id)
+            else:
+                logger.warning("[Queue] URL refresh failed for song_id=%d item_id=%d — will retry on play",
+                               qi.song_id, qi.id)
+    await db.commit()
 
     enriched = []
-    skipped = 0
     for qi in items:
-        if qi.id in dead_items:
-            skipped += 1
-            continue
         entry = {
             "id": qi.id,
             "session_id": qi.session_id,
@@ -928,16 +919,6 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
 
         enriched.append(entry)
 
-    playing_index = s.played_items
-    total_items = s.total_items
-    if skipped > 0:
-        # Count dead items before playing_index to adjust position
-        played_dead = sum(1 for qi in items if qi.id in dead_items and qi.position < s.played_items)
-        playing_index -= played_dead
-        total_items -= skipped
-        logger.info("[Queue] Filtered %d unplayable items (played_dead=%d) for session %d — total=%d playing=%d",
-                    skipped, played_dead, s.id, total_items, playing_index)
-
     return {
         "type": "queue_update",
         "session": {
@@ -946,12 +927,12 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
             "session_theme": s.session_theme,
             "status": s.status,
             "persona": s.persona or "xiaoyu",
-            "total_items": total_items,
-            "played_items": playing_index,
+            "total_items": s.total_items,
+            "played_items": s.played_items,
             "weather_summary": s.weather_summary,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         },
         "items": enriched,
-        "playing_index": playing_index,
+        "playing_index": s.played_items,
         "initiator_client_id": initiator_client_id,
     }

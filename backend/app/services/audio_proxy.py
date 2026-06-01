@@ -140,24 +140,15 @@ async def get_song_url(db: AsyncSession, song_id: int, user_id: int | None = Non
             logger.info("[AudioProxy] 320k failed for song_id=%d, retrying 128k", song_id)
 
     if url:
-        # Cache the successful result
         song.cached_stream_url = url
         song.last_url_fetch = _utcnow()
         song.has_playable_url = True
         await db.commit()
         return url
 
-    # Both bitrates failed — but don't mark as permanently unplayable if the
-    # user has no Netease cookies. VIP songs always return freeTrial without auth.
-    if not cookies:
-        logger.warning("[AudioProxy] All bitrates failed (no cookies): song_id=%d netease_id=%d — not marking unplayable",
-                       song_id, song.netease_song_id)
-        return None
-
-    logger.warning("[AudioProxy] All bitrates failed: song_id=%d netease_id=%d",
-                   song_id, song.netease_song_id)
-    song.has_playable_url = False
-    song.cached_stream_url = None
-    song.last_url_fetch = _utcnow()
-    await db.commit()
+    # F40: Never permanently mark songs as unplayable. URL fetch failures are
+    # transient (expired cookies, network hiccup, sidecar restart). The next
+    # request will retry — songs that were synced successfully SHOULD be playable.
+    logger.warning("[AudioProxy] URL fetch failed: song_id=%d netease_id=%d cookies=%s",
+                   song_id, song.netease_song_id, "yes" if cookies else "no")
     return None
