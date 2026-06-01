@@ -70,16 +70,21 @@ export function useAudioVisualizer() {
     if (_ctx.state !== 'running') return
     if (audioEl.readyState < 2) return
 
-    // Already captured — old source chain still works, nothing to do
-    if (_captured.has(audioEl)) return
+    const alreadyCaptured = _captured.has(audioEl)
+    if (import.meta.env.DEV) {
+      console.log(`[Vis] tryAttach captured=${alreadyCaptured} src=${audioEl.src?.substring(0,50)} readyState=${audioEl.readyState} ctxState=${_ctx.state}`)
+    }
+
+    if (alreadyCaptured) return
 
     try {
       _source = _ctx.createMediaElementSource(audioEl)
       _source.connect(_analyser)
       _captured.add(audioEl)
-    } catch {
-      // Element already captured by a previous lifecycle
+      if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource OK')
+    } catch (e) {
       _captured.add(audioEl)
+      if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource FAILED (already captured):', e)
     }
   }, [])
 
