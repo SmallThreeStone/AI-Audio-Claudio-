@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Audio Test</title></head><body>
+<h1>Audio Playback Test</h1>
+<div id="log"></div>
+<button id="playTTS">Play TTS (no AudioContext)</button>
+<button id="playTTSctx">Play TTS (with AudioContext + createMediaElementSource)</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+<script>
+const log = (msg) => {
+  document.getElementById('log').innerHTML += `<br>[${performance.now().toFixed(0)}ms] ${msg}`
+}
+
+// Test 1: Howler alone, no AudioContext
+document.getElementById('playTTS').onclick = () => {
+  log('Test 1: Howler alone')
+  const h = new Howl({ src: ['/api/audio/tts/488.mp3'], html5: true, volume: 0.8,
+    onplay: () => {
+      log('onplay - duration: ' + h.duration())
+      const node = h._sounds?.[0]?._node
+      log('node readyState: ' + node?.readyState + ' paused: ' + node?.paused)
+      let tick = 0
+      const iv = setInterval(() => {
+        const ct = node ? node.currentTime : h.seek()
+        log('tick ' + (++tick) + ' currentTime: ' + (ct?.toFixed?.(2) ?? ct))
+        if (tick >= 5) { clearInterval(iv); log('DONE') }
+      }, 1000)
+    },
+    onloaderror: (id, err) => log('ERROR: ' + err),
+    onplayerror: () => log('PLAYERROR'),
+    onend: () => log('onend')
+  })
+  h.play()
+}
+
+// Test 2: Howler + AudioContext with createMediaElementSource
+document.getElementById('playTTSctx').onclick = () => {
+  log('Test 2: Howler + AudioContext')
+  const ctx = new AudioContext()
+  log('AudioContext state: ' + ctx.state)
+
+  const h = new Howl({ src: ['/api/audio/tts/488.mp3'], html5: true, volume: 0.8,
+    onplay: () => {
+      log('onplay - duration: ' + h.duration())
+      const node = h._sounds?.[0]?._node
+      log('node readyState: ' + node?.readyState + ' paused: ' + node?.paused)
+
+      // Attach to AudioContext
+      try {
+        const source = ctx.createMediaElementSource(node)
+        const analyser = ctx.createAnalyser()
+        source.connect(analyser)
+        analyser.connect(ctx.destination)
+        log('createMediaElementSource OK')
+      } catch(e) {
+        log('createMediaElementSource FAILED: ' + e.message)
+      }
+
+      let tick = 0
+      const iv = setInterval(() => {
+        const ct = node ? node.currentTime : h.seek()
+        log('tick ' + (++tick) + ' currentTime: ' + (ct?.toFixed?.(2) ?? ct) + ' ctx.state: ' + ctx.state)
+        if (tick >= 5) { clearInterval(iv); log('DONE') }
+      }, 1000)
+    },
+    onloaderror: (id, err) => log('ERROR: ' + err),
+    onplayerror: () => log('PLAYERROR'),
+    onend: () => log('onend')
+  })
+  h.play()
+}
+</script>
+</body></html>

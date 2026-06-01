@@ -29,16 +29,9 @@ function destroyHowl(h: Howl | null) {
   h.off('unlock')
   h.volume(0)
   h.stop()
-  // Destroy underlying HTMLAudioElements — stop streaming & release memory
-  const sounds: Array<{ _node?: HTMLAudioElement }> = (h as any)._sounds || []
-  for (const s of sounds) {
-    if (s._node) {
-      s._node.pause()
-      s._node.removeAttribute('src')
-      s._node.src = ''
-      s._node.load()
-    }
-  }
+  // F35: unload() returns the HTMLAudioElement to Howler's internal pool.
+  // Without it, subsequent Howls get dead/reused elements with currentTime stuck at 0.
+  h.unload()
 }
 
 export function useRadioPlayer() {
