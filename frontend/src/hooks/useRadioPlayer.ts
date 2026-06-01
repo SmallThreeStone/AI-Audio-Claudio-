@@ -160,9 +160,8 @@ export function useRadioPlayer() {
           playerLog('[Player] onplay _sounds count:', sounds0.length,
             sounds0.map((s: any, i: number) => `[${i}]:paused=${s._paused},readyState=${s._node?.readyState},src=${s._node?.src?.substring(0,30)}`).join(' '))
 
-          // F35: DISABLE visualizer to isolate root cause of currentTime=0
-          // const playingNode = getPlayingNode()
-          // if (playingNode) sharedAudioEl.current = playingNode
+          const playingNode = getPlayingNode()
+          if (playingNode) sharedAudioEl.current = playingNode
 
           setIsAudioLoading(false)
           setIsPlaying(true)

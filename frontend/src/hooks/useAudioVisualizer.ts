@@ -1,22 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore } from '../store'
 
-// Module-level shared refs — useRadioPlayer writes the active <audio> element here,
-// useAudioVisualizer reads it on each animation frame.
-// F32: sourceRef & ctxRef promoted to module-level so destroyHowl can synchronously
-// disconnect the old MediaElementAudioSourceNode before creating a new Howl.
 export const sharedAudioEl: { current: HTMLAudioElement | null } = { current: null }
-export const visualizerSource: { current: MediaElementAudioSourceNode | null } = { current: null }
-export const visualizerCtx: { current: AudioContext | null } = { current: null }
+
+// F35: Module-level singletons survive React StrictMode double-mount.
+// createMediaElementSource can only be called ONCE per audio element globally.
+// Closing the AudioContext or disconnecting the source destroys audio output.
+let _ctx: AudioContext | null = null
+let _analyser: AnalyserNode | null = null
+let _source: MediaElementAudioSourceNode | null = null
+const _captured = new WeakSet<HTMLAudioElement>()  // track elements already captured
 
 export function useAudioVisualizer() {
-  const analyserRef = useRef<AnalyserNode | null>(null)
   const rafRef = useRef<number>(0)
-  const attachedElRef = useRef<HTMLAudioElement | null>(null)
   const resumeAttemptedRef = useRef(false)
-  const resumePromiseRef = useRef<Promise<void> | null>(null)  // F9: track pending resume
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)  // F19: idle stop
-  const runningRef = useRef(false)  // F19: track if rAF loop is active
+  const resumePromiseRef = useRef<Promise<void> | null>(null)
+  const runningRef = useRef(false)
 
   const [frequencyData, setFrequencyData] = useState<Uint8Array>(new Uint8Array(128))
   const [lowFreqEnergy, setLowFreqEnergy] = useState(0)
@@ -25,123 +24,80 @@ export function useAudioVisualizer() {
   const isAudioLoading = useStore((s) => s.isAudioLoading)
   const currentItem = useStore((s) => s.currentItem)
 
-  // F34: Single AudioContext, survives React StrictMode double-mount.
-  // createMediaElementSource can only be called ONCE per audio element across
-  // the entire lifetime of all AudioContexts. StrictMode's first mount→unmount→remount
-  // cycle would close the first AudioContext, leaving the element permanently bound
-  // to a dead context. Module-level visualizerCtx prevents this.
+  // One-time setup: AudioContext + Analyser
   useEffect(() => {
-    // Reuse existing ctx from previous StrictMode mount, or create new one
-    let ctx = visualizerCtx.current
-    if (!ctx || ctx.state === 'closed') {
-      ctx = new AudioContext()
-      visualizerCtx.current = ctx
+    if (!_ctx || _ctx.state === 'closed') {
+      _ctx = new AudioContext()
     }
-
-    const analyser = ctx.createAnalyser()
-    analyser.fftSize = window.innerWidth <= 768 ? 128 : 256
-    analyser.smoothingTimeConstant = 0.8
-    analyser.connect(ctx.destination)
-    analyserRef.current = analyser
+    if (!_analyser) {
+      _analyser = _ctx.createAnalyser()
+      _analyser.fftSize = window.innerWidth <= 768 ? 128 : 256
+      _analyser.smoothingTimeConstant = 0.8
+      _analyser.connect(_ctx.destination)
+    }
 
     const doResume = () => {
-      if (ctx!.state === 'suspended' && !resumePromiseRef.current) {
-        resumePromiseRef.current = ctx!.resume().then(() => {
+      if (_ctx!.state === 'suspended' && !resumePromiseRef.current) {
+        resumePromiseRef.current = _ctx!.resume().then(() => {
           resumePromiseRef.current = null
-        }).catch(() => {
-          resumePromiseRef.current = null
-        })
+        }).catch(() => { resumePromiseRef.current = null })
       }
     }
-
     doResume()
 
-    const resumeOnInteraction = () => {
+    const onInteraction = () => {
       doResume()
-      if (ctx!.state === 'running') {
-        document.removeEventListener('click', resumeOnInteraction)
-        document.removeEventListener('touchstart', resumeOnInteraction)
-        document.removeEventListener('keydown', resumeOnInteraction)
-        resumeAttemptedRef.current = true
+      if (_ctx!.state === 'running') {
+        document.removeEventListener('click', onInteraction)
+        document.removeEventListener('touchstart', onInteraction)
+        document.removeEventListener('keydown', onInteraction)
       }
     }
-    document.addEventListener('click', resumeOnInteraction)
-    document.addEventListener('touchstart', resumeOnInteraction)
-    document.addEventListener('keydown', resumeOnInteraction)
+    document.addEventListener('click', onInteraction)
+    document.addEventListener('touchstart', onInteraction)
+    document.addEventListener('keydown', onInteraction)
 
     return () => {
-      document.removeEventListener('click', resumeOnInteraction)
-      document.removeEventListener('touchstart', resumeOnInteraction)
-      document.removeEventListener('keydown', resumeOnInteraction)
-      cancelAnimationFrame(rafRef.current)
-      // F34: Do NOT close the AudioContext — it would break createMediaElementSource
-      // bindings in StrictMode. Only disconnect sources and reset refs.
-      if (visualizerSource.current) {
-        try { visualizerSource.current.disconnect() } catch { /* ok */ }
-        visualizerSource.current = null
-      }
-      analyserRef.current = null
-      attachedElRef.current = null
+      document.removeEventListener('click', onInteraction)
+      document.removeEventListener('touchstart', onInteraction)
+      document.removeEventListener('keydown', onInteraction)
     }
   }, [])
 
-  // Wire up audio element to analyser — only when AudioContext is running
+  // Wire audio element to analyser
   const tryAttach = useCallback(() => {
     const audioEl = sharedAudioEl.current
-    if (!audioEl || audioEl === attachedElRef.current) return
+    if (!audioEl) return
+    if (!_ctx || !_analyser) return
+    if (_ctx.state !== 'running') return
+    if (audioEl.readyState < 2) return
 
-    const ctx = visualizerCtx.current
-    const analyser = analyserRef.current
-    if (!ctx || !analyser) return
-
-    // F9: If a resume is in progress, wait for it before trying to attach.
-    // Otherwise createMediaElementSource may reroute audio through a suspended graph.
-    if (ctx.state !== 'running') {
-      if (resumePromiseRef.current) {
-        resumePromiseRef.current.then(() => {
-          // Retry on next frame after resume completes
-        })
-      } else {
-        ctx.resume().catch(() => {})
+    // Already captured by a previous StrictMode mount
+    if (_captured.has(audioEl)) {
+      // Reconnect the existing source to the current analyser
+      if (_source) {
+        try { _source.disconnect() } catch {}
+        _source.connect(_analyser)
       }
       return
     }
 
-    if (audioEl.readyState < 2) return // Not enough data yet
-
-    // Disconnect previous source
-    if (visualizerSource.current) {
-      try { visualizerSource.current.disconnect() } catch { /* ok */ }
-      visualizerSource.current = null
-    }
-
-    attachedElRef.current = audioEl
-
+    // First time capturing this element
     try {
-      const source = ctx.createMediaElementSource(audioEl)
-      source.connect(analyser)
-      visualizerSource.current = source
-    } catch (e) {
-      // F34: createMediaElementSource already called on this element (React StrictMode
-      // double-mount, or HMR). Fall back to captureStream() which has no such limit.
-      try {
-        const stream = (audioEl as any).captureStream?.() || (audioEl as any).mozCaptureStream?.()
-        if (stream) {
-          const streamSource = ctx.createMediaStreamSource(stream)
-          streamSource.connect(analyser)
-          visualizerSource.current = streamSource as any
-        }
-      } catch { /* both approaches failed, audio plays without visualizer */ }
+      _source = _ctx.createMediaElementSource(audioEl)
+      _source.connect(_analyser)
+      _captured.add(audioEl)
+    } catch {
+      // Element already captured by a previous lifecycle — add to set and skip
+      _captured.add(audioEl)
     }
   }, [])
 
-  // Animation loop — F19: stops completely after 30s of idle (not playing/loading)
-  const IDLE_STOP_MS = 30_000
-
+  // Animation loop
   useEffect(() => {
-    const analyser = analyserRef.current
+    const analyser = _analyser
     const bufferLength = analyser?.frequencyBinCount || 128
-
+    const IDLE_STOP_MS = 30_000
     let lastFrameTime = 0
     const IDLE_FPS = 4
     let idleSince = 0
@@ -149,60 +105,41 @@ export function useAudioVisualizer() {
     const startLoop = () => {
       if (runningRef.current) return
       runningRef.current = true
-
       const loop = (timestamp: number) => {
-        // F19: Check if we should stop the loop entirely
         if (!isPlaying && !isAudioLoading) {
           if (!idleSince) idleSince = timestamp
-          else if (timestamp - idleSince > IDLE_STOP_MS) {
-            runningRef.current = false
-            return // Stop loop completely
-          }
-        } else {
-          idleSince = 0
-        }
+          else if (timestamp - idleSince > IDLE_STOP_MS) { runningRef.current = false; return }
+        } else { idleSince = 0 }
 
         tryAttach()
 
-        if (analyser && visualizerCtx.current?.state === 'running') {
+        if (analyser && _ctx?.state === 'running') {
           const data = new Uint8Array(bufferLength)
           analyser.getByteFrequencyData(data)
           setFrequencyData(data)
-
           const lowBins = Math.floor(bufferLength / 4)
           let sum = 0
           for (let i = 0; i < lowBins; i++) sum += data[i]
           setLowFreqEnergy(sum / (lowBins * 255))
         }
 
-        if (!isPlaying && !isAudioLoading) {
-          if (timestamp - lastFrameTime < 1000 / IDLE_FPS) {
-            rafRef.current = requestAnimationFrame(loop)
-            return
-          }
-          lastFrameTime = timestamp
+        if (!isPlaying && !isAudioLoading && timestamp - lastFrameTime < 1000 / IDLE_FPS) {
+          rafRef.current = requestAnimationFrame(loop); return
         }
-
+        lastFrameTime = timestamp
         rafRef.current = requestAnimationFrame(loop)
       }
-
       rafRef.current = requestAnimationFrame(loop)
     }
-
     startLoop()
-
-    return () => {
-      cancelAnimationFrame(rafRef.current)
-      runningRef.current = false
-    }
+    return () => { cancelAnimationFrame(rafRef.current); runningRef.current = false }
   }, [isPlaying, isAudioLoading, tryAttach])
 
-  // Clear attachment when song changes
+  // Clear on track change — disconnect source so it stops reading old element
   useEffect(() => {
-    attachedElRef.current = null
-    if (visualizerSource.current) {
-      try { visualizerSource.current.disconnect() } catch { /* ok */ }
-      visualizerSource.current = null
+    if (_source) {
+      try { _source.disconnect() } catch {}
+      _source = null
     }
   }, [currentItem?.id])
 
