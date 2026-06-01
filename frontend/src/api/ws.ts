@@ -53,17 +53,18 @@ class RadioWebSocket {
           }
           return
         }
-        wsLog('rx', msg.type,
-          msg.type === 'queue_update'
-            ? `session=${(msg.session as Record<string,unknown>|null)?.id ?? 'null'} items=${(msg.items as unknown[])?.length ?? 0} playing=${msg.playing_index ?? '?'}`
-            : msg.type === 'generation_progress'
-              ? `${msg.stage}: ${msg.message}`
-              : '')
+        // Only log significant message types
+        if (msg.type === 'queue_update' || msg.type === 'generation_progress' || msg.type === 'error') {
+          wsLog('rx', msg.type,
+            msg.type === 'queue_update'
+              ? `playing=${msg.playing_index}`
+              : msg.type === 'generation_progress'
+                ? `${msg.stage}: ${msg.message}`
+                : `queue_item_id=${msg.queue_item_id}`)
+        }
         const handlers = this.handlers.get(msg.type)
         if (handlers) {
           handlers.forEach((h) => h(msg))
-        } else {
-          wsLog('rx', msg.type, '— NO HANDLERS registered')
         }
       } catch (e) {
         if (import.meta.env.DEV) console.error('[WS] Parse error:', e)
@@ -110,10 +111,10 @@ class RadioWebSocket {
 
   send(msg: Record<string, unknown>) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      wsLog('tx', msg.type, msg.type === 'progress_report' ? `id=${msg.queue_item_id} pos=${msg.position_seconds}` : '')
+      if (msg.type !== 'progress_report' && msg.type !== 'ping') {
+        wsLog('tx', msg.type)
+      }
       this.ws.send(JSON.stringify(msg))
-    } else {
-      wsLog('tx DROPPED — WS not open, readyState:', this.ws?.readyState, 'type:', msg.type)
     }
   }
 

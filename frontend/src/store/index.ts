@@ -190,10 +190,9 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   setDemoMode: (v) => set({ demoMode: v }),
 }))
 
-// Dev-only state change logger
+// Dev-only state change logger — only log queue/session/isPlaying changes
 if (import.meta.env.DEV) {
-  const keySet = new Set(['queue', 'currentIndex', 'session', 'isPlaying', 'isAudioLoading',
-    'currentItem', 'isGenerating', 'generationStage', 'notice', 'isLoggedIn', 'demoMode'])
+  const keySet = new Set(['queue', 'session', 'isPlaying', 'isGenerating'])
   let prev: Record<string, unknown> = {}
   useStore.subscribe((state) => {
     const changed: string[] = []
@@ -207,9 +206,8 @@ if (import.meta.env.DEV) {
       const vals: Record<string, unknown> = {}
       for (const k of changed) {
         const v = (state as any)[k]
-        if (k === 'queue') vals[k] = `[${v.length} items]`
+        if (k === 'queue') vals[k] = `[${v.length}]`
         else if (k === 'session') vals[k] = v?.id ?? null
-        else if (k === 'currentItem') vals[k] = v?.id ?? null
         else vals[k] = v
       }
       storeLog(JSON.stringify(vals))

@@ -74,18 +74,12 @@ export function useAudioVisualizer() {
     if (audioEl.readyState < 2) return
 
     const alreadyCaptured = _captured.has(audioEl)
-    if (import.meta.env.DEV) {
-      console.log(`[Vis] tryAttach captured=${alreadyCaptured} src=${audioEl.src?.substring(0,50)} readyState=${audioEl.readyState}`)
-    }
-
     if (alreadyCaptured) {
-      // F37: Element reused from Howler pool — reconnect its existing source
       const existingSource = visSourceMap.get(audioEl)
       if (existingSource) {
         try { existingSource.disconnect() } catch {}
         existingSource.connect(_analyser)
         _source = existingSource
-        if (import.meta.env.DEV) console.log('[Vis] reconnected existing source')
       }
       return
     }
@@ -95,10 +89,8 @@ export function useAudioVisualizer() {
       _source.connect(_analyser)
       _captured.add(audioEl)
       visSourceMap.set(audioEl, _source)
-      if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource OK')
     } catch (e) {
       _captured.add(audioEl)
-      if (import.meta.env.DEV) console.log('[Vis] createMediaElementSource FAILED:', e)
     }
   }, [])
 
