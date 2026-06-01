@@ -117,7 +117,7 @@ export function useRadioPlayer() {
       playingSessionRef.current = useStore.getState().session?.id ?? null
 
       const isTTS = item.item_type.startsWith('tts')
-      const src = isTTS ? item.tts_audio_url : `/api/audio/music/${item.song_id}`
+      const src = isTTS ? item.tts_audio_url : `/api/audio/music/${item.song_id}?cid=${getClientId()}`
 
       if (!src) {
         playerLog('[Player] playItem — no src, advancing')
@@ -419,7 +419,7 @@ export function useRadioPlayer() {
     setCurrentIndex(-1)
     playingSessionRef.current = store.session?.id ?? null
 
-    const src = `/api/audio/music/${lastSong.song_id}`
+    const src = `/api/audio/music/${lastSong.song_id}?cid=${getClientId()}`
 
     // F6: Loading timeout for history songs too
     loadTimerRef.current = setTimeout(() => {

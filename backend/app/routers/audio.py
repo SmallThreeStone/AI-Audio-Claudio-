@@ -73,6 +73,16 @@ def _parse_range(range_header: str, file_size: int) -> tuple[int, int]:
 @router.get("/music/{song_id}")
 async def serve_music(song_id: int, request: Request, session: AsyncSession = Depends(get_session)):
     user_id = getattr(request.state, "user_id", None)
+    # F31: HTMLAudioElement requests don't carry X-Client-Id header — accept ?cid= as fallback
+    if not user_id:
+        cid = request.query_params.get("cid")
+        if cid:
+            from sqlalchemy import select as _sel
+            from ..models.user import User as _User
+            result = await session.execute(_sel(_User).where(_User.client_id == cid))
+            u = result.scalar()
+            if u:
+                user_id = u.id
     url = await get_song_url(session, song_id, user_id)
     if not url:
         logger.warning("[Audio] No URL for song_id=%d user_id=%s — returning 404", song_id, user_id)
