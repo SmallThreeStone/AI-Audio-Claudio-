@@ -21,6 +21,13 @@ let currentToken = 0  // F30: global token — incremented on every track advanc
 function destroyHowl(h: Howl | null) {
   if (!h) return
   deadHowls.add(h)
+  // F37: Direct DOM mute before Howler stop — MediaElementAudioSourceNode
+  // bypasses Howler's volume control. Without this, old audio bleeds through
+  // the visualizer's AudioContext chain during skip/transition.
+  const sounds: Array<{ _node?: HTMLAudioElement }> = (h as any)._sounds || []
+  for (const s of sounds) {
+    if (s._node) s._node.muted = true
+  }
   h.off('end')
   h.off('play')
   h.off('loaderror')
@@ -29,8 +36,6 @@ function destroyHowl(h: Howl | null) {
   h.off('unlock')
   h.volume(0)
   h.stop()
-  // F35: unload() returns the HTMLAudioElement to Howler's internal pool.
-  // Without it, subsequent Howls get dead/reused elements with currentTime stuck at 0.
   h.unload()
 }
 
