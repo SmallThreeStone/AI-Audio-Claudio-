@@ -212,8 +212,8 @@ export function useRadioPlayer() {
         onloaderror: (_id, err) => {
           if (token !== currentToken) return
           clearLoadTimer()
-          // Silently skip — user doesn't need to know about transient URL failures
-          playerLog('onloaderror id=', item.id, 'silently advancing')
+          console.error('[Player] onloaderror — id:', item.id, 'error:', err)
+          radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: `howler_error_${err}` })
           advanceTo(currentIdxRef.current + 1)
           skipTrack()
         },
