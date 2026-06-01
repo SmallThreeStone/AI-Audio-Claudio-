@@ -22,7 +22,6 @@ export function useAudioVisualizer() {
 
   const isPlaying = useStore((s) => s.isPlaying)
   const isAudioLoading = useStore((s) => s.isAudioLoading)
-  const currentItem = useStore((s) => s.currentItem)
 
   // One-time setup: AudioContext + Analyser
   useEffect(() => {
@@ -67,28 +66,19 @@ export function useAudioVisualizer() {
   // Wire audio element to analyser
   const tryAttach = useCallback(() => {
     const audioEl = sharedAudioEl.current
-    if (!audioEl) return
-    if (!_ctx || !_analyser) return
+    if (!audioEl || !_ctx || !_analyser) return
     if (_ctx.state !== 'running') return
     if (audioEl.readyState < 2) return
 
-    // Already captured by a previous StrictMode mount
-    if (_captured.has(audioEl)) {
-      // Reconnect the existing source to the current analyser
-      if (_source) {
-        try { _source.disconnect() } catch {}
-        _source.connect(_analyser)
-      }
-      return
-    }
+    // Already captured — old source chain still works, nothing to do
+    if (_captured.has(audioEl)) return
 
-    // First time capturing this element
     try {
       _source = _ctx.createMediaElementSource(audioEl)
       _source.connect(_analyser)
       _captured.add(audioEl)
     } catch {
-      // Element already captured by a previous lifecycle — add to set and skip
+      // Element already captured by a previous lifecycle
       _captured.add(audioEl)
     }
   }, [])
@@ -135,13 +125,10 @@ export function useAudioVisualizer() {
     return () => { cancelAnimationFrame(rafRef.current); runningRef.current = false }
   }, [isPlaying, isAudioLoading, tryAttach])
 
-  // Clear on track change — disconnect source so it stops reading old element
-  useEffect(() => {
-    if (_source) {
-      try { _source.disconnect() } catch {}
-      _source = null
-    }
-  }, [currentItem?.id])
+  // F36: Do NOT disconnect _source on track change.
+  // React's effect timing means disconnect can fire AFTER tryAttach already
+  // reconnected the source for the new track, killing audio for the new track.
+  // Old sources are harmless — they just read from stopped audio elements.
 
   return { frequencyData, lowFreqEnergy }
 }
