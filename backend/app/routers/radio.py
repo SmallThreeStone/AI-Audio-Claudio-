@@ -91,6 +91,8 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     if not user:
         raise HTTPException(status_code=401, detail="Not logged in")
 
+    logger.info("[Radio] /request user_id=%s text=%s persona=%s", user_id, body.text, body.persona)
+
     # Stop any currently active session for this user before starting a new one
     active_result = await session.execute(
         select(DJSession)
@@ -100,6 +102,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     )
     active = active_result.scalar()
     if active:
+        logger.info("[Radio] /request — stopping active session id=%s", active.id)
         active.status = "completed"
         await session.commit()
         await ws_manager.broadcast_to_user(user_id, _session_status_msg(active))
@@ -108,6 +111,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     from sqlalchemy import func
     count_result = await session.execute(select(func.count()).select_from(Song))
     total = count_result.scalar() or 0
+    logger.info("[Radio] /request — song_count=%s demo_mode=%s", total, DEMO_MODE if total == 0 else "off")
     if total == 0:
         if DEMO_MODE:
             demo_songs = _load_demo_songs()
@@ -153,6 +157,8 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
         script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id, demo_songs=demo_songs if total == 0 else None)
         dj_session.ai_response_raw = str(script)
         dj_session.session_theme = script.get("session_theme", "")
+        logger.info("[Radio] /request — AI script generated session_id=%s theme=%s items=%s",
+                    dj_session.id, script.get("session_theme", ""), len(script.get("script", [])))
         # Demo mode: convert song items to TTS so the DJ voice demo works without real songs
         if total == 0 and DEMO_MODE:
             script = _demo_script_variant(script)
@@ -162,8 +168,9 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
         await build_queue_from_script(session, script, dj_session.id, progress_callback=_progress)
 
         await _broadcast_queue(session, dj_session.id, body.client_id)
+        logger.info("[Radio] /request — DONE session_id=%s status=%s", dj_session.id, dj_session.status)
     except Exception as e:
-        logger.error("Radio generation error: %s", e)
+        logger.error("[Radio] /request FAILED session_id=%s error=%s", dj_session.id, e, exc_info=True)
         dj_session.status = "error"
         await session.commit()
         await ws_manager.broadcast_to_user(user_id, _session_status_msg(dj_session))
@@ -365,6 +372,8 @@ async def get_queue(request: Request, session: AsyncSession = Depends(get_sessio
         await session.commit()
         return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
 
+    logger.info("[Radio] GET /queue user_id=%s session_id=%s status=%s played=%s total=%s",
+                user_id, active.id, active.status, active.played_items, active.total_items)
     return await _build_queue_response(session, active)
 
 
@@ -382,6 +391,8 @@ async def skip_track(request: Request, session: AsyncSession = Depends(get_sessi
     result = await session.execute(query)
     active = result.scalar()
     if active:
+        logger.info("[Radio] POST /skip user_id=%s session_id=%s played_items=%s→%s",
+                    user_id, active.id, active.played_items, active.played_items + 1)
         active.played_items += 1
         await session.commit()
         await check_refill(session, active.id)
@@ -434,6 +445,7 @@ async def stop_radio(request: Request, session: AsyncSession = Depends(get_sessi
     result = await session.execute(query)
     active = result.scalar()
     if active:
+        logger.info("[Radio] POST /stop user_id=%s session_id=%s", user_id, active.id)
         active.status = "completed"
         await session.commit()
         await ws_manager.broadcast_to_user(user_id, _session_status_msg(active))
@@ -447,6 +459,9 @@ async def _broadcast_queue(db: AsyncSession, session_id: int, initiator_client_i
     if not s:
         return
     data = await _build_queue_response(db, s, initiator_client_id)
+    items_count = len(data.get("items", []))
+    logger.info("[Radio] _broadcast_queue session_id=%s items=%s playing_index=%s initiator=%s",
+                session_id, items_count, data.get("playing_index"), initiator_client_id[:8] if initiator_client_id else "")
     # Only broadcast to the session owner, not all connected clients
     user_id = s.user_id if s.user_id else 0
     await ws_manager.broadcast_to_user(user_id, data)
@@ -551,6 +566,8 @@ async def record_feedback(body: FeedbackRequest, request: Request, session: Asyn
     if not qi:
         raise HTTPException(status_code=404, detail="Queue item not found")
 
+    logger.info("[Radio] POST /feedback user_id=%s queue_item_id=%s feedback=%s song_id=%s",
+                user_id, body.queue_item_id, body.feedback, qi.song_id)
     qi.user_feedback = body.feedback
 
     # Also update song aggregate counts
@@ -580,6 +597,9 @@ async def record_listen_event(body: ListenEventRequest, request: Request, sessio
     qi = qi_result.scalar()
     if not qi or not qi.song_id:
         return {"status": "ok"}  # TTS items not tracked
+
+    logger.info("[Radio] POST /listen-event user_id=%s item_id=%s event=%s pos=%.1f",
+                user_id, body.queue_item_id, body.event, body.position_seconds)
 
     # Get song duration
     song_result = await session.execute(select(Song).where(Song.id == qi.song_id))

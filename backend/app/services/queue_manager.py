@@ -121,6 +121,9 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
 
     await db.commit()
 
+    logger.info("[Queue] build_queue — session_id=%s tts_items=%s song_items=%s user_id=%s",
+                session_id, len(tts_tasks), len(song_tasks), owner_user_id)
+
     sem = asyncio.Semaphore(3)
 
     async def resolve_one_song(item_id: int, song_id: int):
@@ -136,6 +139,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
                     else:
                         qi.status = "error"
                         qi.error_message = "版权受限或无法获取播放链接"
+                        logger.warning("[Queue] song FAILED — item_id=%s song_id=%s", item_id, song_id)
                 await task_db.commit()
 
     async def resolve_all_songs():
@@ -161,7 +165,9 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
 
     # F21: Run song URL resolution first, then TTS synthesis — serial execution
     # avoids SQLite "database is locked" from parallel writes to the same file.
+    logger.info("[Queue] build_queue — resolving %s song URLs...", len(song_tasks))
     await resolve_all_songs()
+    logger.info("[Queue] build_queue — synthesizing %s TTS items...", len(tts_tasks))
     await synthesize_all_tts()
 
     # Update session
@@ -170,6 +176,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
     if s:
         s.total_items = position
         s.status = "ready"
+        logger.info("[Queue] build_queue — DONE session_id=%s total_items=%s status=ready", session_id, position)
 
     await db.commit()
 

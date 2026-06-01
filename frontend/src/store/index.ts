@@ -93,6 +93,8 @@ interface SettingsSlice {
   setDemoMode: (v: boolean) => void
 }
 
+const storeLog = (...args: unknown[]) => { if (import.meta.env.DEV) console.log('[Store]', ...args) }
+
 export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSlice & DlnaSlice & SettingsSlice>((set) => ({
   // Auth
   user: null,
@@ -187,3 +189,30 @@ export const useStore = create<AuthSlice & PlaylistSlice & PlayerSlice & QueueSl
   demoMode: false,
   setDemoMode: (v) => set({ demoMode: v }),
 }))
+
+// Dev-only state change logger
+if (import.meta.env.DEV) {
+  const keySet = new Set(['queue', 'currentIndex', 'session', 'isPlaying', 'isAudioLoading',
+    'currentItem', 'isGenerating', 'generationStage', 'notice', 'isLoggedIn', 'demoMode'])
+  let prev: Record<string, unknown> = {}
+  useStore.subscribe((state) => {
+    const changed: string[] = []
+    for (const k of keySet) {
+      if (prev[k] !== (state as any)[k]) {
+        changed.push(k)
+        prev[k] = (state as any)[k]
+      }
+    }
+    if (changed.length > 0) {
+      const vals: Record<string, unknown> = {}
+      for (const k of changed) {
+        const v = (state as any)[k]
+        if (k === 'queue') vals[k] = `[${v.length} items]`
+        else if (k === 'session') vals[k] = v?.id ?? null
+        else if (k === 'currentItem') vals[k] = v?.id ?? null
+        else vals[k] = v
+      }
+      storeLog(JSON.stringify(vals))
+    }
+  })
+}

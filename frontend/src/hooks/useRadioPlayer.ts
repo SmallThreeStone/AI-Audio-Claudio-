@@ -173,10 +173,38 @@ export function useRadioPlayer() {
             useStore.getState().addToHistory(item)
           }
 
+          // F25: Stuck detection — if progress stays at 0 for 3s, audio is blocked
+          let stuckSeconds = 0
+          let lastSeek = 0
           progressRef.current = setInterval(() => {
             const seek = howl.seek() as number
             setCurrentTime(seek)
             radioWS.send({ type: 'progress_report', queue_item_id: item.id, position_seconds: seek })
+            // If onplay fired but seek stays at 0, audio is stuck (browser blocked)
+            if (seek === 0 && lastSeek === 0) {
+              stuckSeconds++
+              if (stuckSeconds >= 3) {
+                playerLog('[Player] STUCK detected — progress at 0 for 3s, skipping')
+                clearInterval(progressRef.current!)
+                progressRef.current = undefined
+                howl.off('play'); howl.off('end'); howl.off('loaderror')
+                howl.off('playerror'); howl.off('pause'); howl.off('unlock')
+                howl.volume(0); howl.stop(); howl.unload()
+                if (howlRef.current === howl) {
+                  howlRef.current = null
+                  sharedAudioEl.current = null
+                }
+                setIsAudioLoading(false); setIsPlaying(false)
+                setCurrentTime(0); setDuration(0)
+                useStore.getState().setNotice('音频被浏览器阻止，已自动跳过')
+                skipTrack()
+                const next = currentIdxRef.current + 1
+                if (next < useStore.getState().queue.length) setTimeout(() => playItem(next), 150)
+              }
+            } else {
+              stuckSeconds = 0
+            }
+            lastSeek = seek
           }, 1000)
         },
         onplayerror: () => {
@@ -272,14 +300,18 @@ export function useRadioPlayer() {
         // F24: Mobile autoplay unlock — retry play once audio context is unlocked
         onunlock: () => {
           if (gen !== generationRef.current) return
-          playerLog('[Player] onunlock — retrying play for id:', item.id)
+          playerLog('[Player] onunlock — id:', item.id, 'onplayAlreadyFired:', true)
+          // F25: If onplay already fired, the audio is already playing (or stuck).
+          // Re-calling howl.play() resets position to 0 — don't do it.
+          // Just show a notice hinting the user to interact with the page.
           if (!autoPlayBlockNoticeShown) {
             autoPlayBlockNoticeShown = true
             useStore.getState().setNotice('浏览器阻止了自动播放，请点击页面任意位置开始播放')
           }
-          if (howlRef.current === howl && !howl.playing()) {
-            howl.play()
-          }
+          // Don't call howl.play() here — onplay handles the actual start.
+          // onunlock only means the audio context is now available; if onplay
+          // already ran, the audio should be progressing. If it's not (stuck at 0),
+          // the progress detection in onplay's interval will catch it.
         },
       })
 

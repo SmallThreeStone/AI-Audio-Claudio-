@@ -30,8 +30,11 @@ class WSManager:
     async def broadcast_to_user(self, user_id: int, data: dict):
         """Send to all connections of a specific user."""
         message = json.dumps(data, ensure_ascii=False)
+        msg_type = data.get("type", "?")
         dead = []
-        for ws in self._channels.get(user_id, []):
+        conns = self._channels.get(user_id, [])
+        logger.info("[WS] tx user_id=%s type=%s conns=%s", user_id, msg_type, len(conns))
+        for ws in conns:
             try:
                 await ws.send_text(message)
             except Exception:
