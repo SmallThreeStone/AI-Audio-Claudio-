@@ -18,6 +18,7 @@ const deadHowls = new WeakSet<Howl>()  // F26: track killed Howls so stale inter
 
 function destroyHowl(h: Howl | null) {
   if (!h) return
+  deadHowls.add(h)
   h.off('end')
   h.off('play')
   h.off('loaderror')
@@ -26,7 +27,6 @@ function destroyHowl(h: Howl | null) {
   h.off('unlock')
   h.volume(0)
   h.stop()
-  h.unload()
 }
 
 export function useRadioPlayer() {
@@ -73,17 +73,12 @@ export function useRadioPlayer() {
       // Cleanup previous Howl completely before creating a new one
       if (howlRef.current) {
         playerLog('[Player] playItem — cleaning up previous Howl')
-        deadHowls.add(howlRef.current)  // F26: mark dead so stale intervals self-clean
-        howlRef.current.off('end')
-        howlRef.current.off('play')
-        howlRef.current.off('loaderror')
-        howlRef.current.off('pause')
-        howlRef.current.off('playerror')
-        howlRef.current.off('unlock')
-        howlRef.current.mute(true)
-        howlRef.current.volume(0)
-        howlRef.current.stop()
-        howlRef.current.unload()
+        deadHowls.add(howlRef.current)
+        const old = howlRef.current
+        old.off('end'); old.off('play'); old.off('loaderror')
+        old.off('pause'); old.off('playerror'); old.off('unlock')
+        old.volume(0)
+        old.stop()
         howlRef.current = null
         sharedAudioEl.current = null
       }
@@ -116,10 +111,10 @@ export function useRadioPlayer() {
         return
       }
 
-      playerLog('[Player] playItem — creating Howl, src:', src.substring(0, 80), 'gen:', gen)
-
       setIsAudioLoading(true)
       const store = useStore.getState()
+
+      playerLog('[Player] playItem — creating Howl, src:', src.substring(0, 80), 'gen:', gen, 'volume:', store.volume)
 
       // F6: Loading timeout — if onplay doesn't fire within 30s, abort and advance
       if (loadTimerRef.current) clearTimeout(loadTimerRef.current)
@@ -199,7 +194,7 @@ export function useRadioPlayer() {
                 progressRef.current = undefined
                 howl.off('play'); howl.off('end'); howl.off('loaderror')
                 howl.off('playerror'); howl.off('pause'); howl.off('unlock')
-                howl.volume(0); howl.stop(); howl.unload()
+                deadHowls.add(howl); howl.volume(0); howl.stop()
                 if (howlRef.current === howl) {
                   howlRef.current = null
                   sharedAudioEl.current = null
@@ -222,8 +217,9 @@ export function useRadioPlayer() {
           if (gen !== generationRef.current) return
           clearLoadTimer()
           console.warn('[Player] onplayerror — id:', item.id, 'gen:', gen)
+          deadHowls.add(howl)
+          howl.volume(0)
           howl.stop()
-          howl.unload()
           if (howlRef.current === howl) {
             howlRef.current = null
             sharedAudioEl.current = null
@@ -284,8 +280,9 @@ export function useRadioPlayer() {
           setIsPlaying(false)
           useStore.getState().setNotice('歌曲加载失败，已自动跳过')
 
+          deadHowls.add(howl)
+          howl.volume(0)
           howl.stop()
-          howl.unload()
           if (howlRef.current === howl) {
             howlRef.current = null
             sharedAudioEl.current = null
@@ -327,6 +324,8 @@ export function useRadioPlayer() {
 
       howl.play()
       howlRef.current = howl
+      howl.volume(store.volume)  // F27: explicit volume after creation (belt & suspenders)
+      playerLog('[Player] Howl created — volume:', howl.volume(), 'muted:', (howl as any)._muted, 'state:', (howl as any)._state)
       // F4: Release lock only after howlRef is assigned — prevents race window
       globalPlayItemLock = false
     },
@@ -473,17 +472,12 @@ export function useRadioPlayer() {
     // off() removes all event listeners so stop() can NOT trigger onend/onplay.
     ++generationRef.current
     if (howlRef.current) {
-      deadHowls.add(howlRef.current)  // mark as dead so stale intervals self-clean
-      howlRef.current.off('end')
-      howlRef.current.off('play')
-      howlRef.current.off('loaderror')
-      howlRef.current.off('pause')
-      howlRef.current.off('playerror')
-      howlRef.current.off('unlock')
-      howlRef.current.mute(true)  // F26: mute BEFORE stop to guarantee silence
-      howlRef.current.volume(0)   // double guarantee — no residual audio
-      howlRef.current.stop()
-      howlRef.current.unload()
+      deadHowls.add(howlRef.current)
+      const old = howlRef.current
+      old.off('end'); old.off('play'); old.off('loaderror')
+      old.off('pause'); old.off('playerror'); old.off('unlock')
+      old.volume(0)
+      old.stop()
       howlRef.current = null
       sharedAudioEl.current = null
     }
