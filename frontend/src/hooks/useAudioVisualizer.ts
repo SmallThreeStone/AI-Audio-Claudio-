@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore } from '../store'
 
-// Module-level shared ref — useRadioPlayer writes the active <audio> element here,
+// Module-level shared refs — useRadioPlayer writes the active <audio> element here,
 // useAudioVisualizer reads it on each animation frame.
+// F32: sourceRef & ctxRef promoted to module-level so destroyHowl can synchronously
+// disconnect the old MediaElementAudioSourceNode before creating a new Howl.
 export const sharedAudioEl: { current: HTMLAudioElement | null } = { current: null }
+export const visualizerSource: { current: MediaElementAudioSourceNode | null } = { current: null }
+export const visualizerCtx: { current: AudioContext | null } = { current: null }
 
 export function useAudioVisualizer() {
-  const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
   const rafRef = useRef<number>(0)
   const attachedElRef = useRef<HTMLAudioElement | null>(null)
   const resumeAttemptedRef = useRef(false)
@@ -30,7 +32,7 @@ export function useAudioVisualizer() {
     analyser.fftSize = window.innerWidth <= 768 ? 128 : 256
     analyser.smoothingTimeConstant = 0.8
     analyser.connect(ctx.destination)
-    audioCtxRef.current = ctx
+    visualizerCtx.current = ctx
     analyserRef.current = analyser
 
     // F9: Track pending resume promise to avoid createMediaElementSource race
@@ -67,9 +69,9 @@ export function useAudioVisualizer() {
       document.removeEventListener('keydown', resumeOnInteraction)
       cancelAnimationFrame(rafRef.current)
       ctx.close().catch(() => {})
-      audioCtxRef.current = null
+      visualizerCtx.current = null
       analyserRef.current = null
-      sourceRef.current = null
+      visualizerSource.current = null
       sharedAudioEl.current = null
     }
   }, [])
@@ -79,7 +81,7 @@ export function useAudioVisualizer() {
     const audioEl = sharedAudioEl.current
     if (!audioEl || audioEl === attachedElRef.current) return
 
-    const ctx = audioCtxRef.current
+    const ctx = visualizerCtx.current
     const analyser = analyserRef.current
     if (!ctx || !analyser) return
 
@@ -99,9 +101,9 @@ export function useAudioVisualizer() {
     if (audioEl.readyState < 2) return // Not enough data yet
 
     // Disconnect previous source
-    if (sourceRef.current) {
-      try { sourceRef.current.disconnect() } catch { /* ok */ }
-      sourceRef.current = null
+    if (visualizerSource.current) {
+      try { visualizerSource.current.disconnect() } catch { /* ok */ }
+      visualizerSource.current = null
     }
 
     attachedElRef.current = audioEl
@@ -109,7 +111,7 @@ export function useAudioVisualizer() {
     try {
       const source = ctx.createMediaElementSource(audioEl)
       source.connect(analyser)
-      sourceRef.current = source
+      visualizerSource.current = source
     } catch (e) {
       // createMediaElementSource already called on this element (by a previous source).
       // The old chain still works — audio routes through it.
@@ -145,7 +147,7 @@ export function useAudioVisualizer() {
 
         tryAttach()
 
-        if (analyser && audioCtxRef.current?.state === 'running') {
+        if (analyser && visualizerCtx.current?.state === 'running') {
           const data = new Uint8Array(bufferLength)
           analyser.getByteFrequencyData(data)
           setFrequencyData(data)
@@ -181,9 +183,9 @@ export function useAudioVisualizer() {
   // Clear attachment when song changes
   useEffect(() => {
     attachedElRef.current = null
-    if (sourceRef.current) {
-      try { sourceRef.current.disconnect() } catch { /* ok */ }
-      sourceRef.current = null
+    if (visualizerSource.current) {
+      try { visualizerSource.current.disconnect() } catch { /* ok */ }
+      visualizerSource.current = null
     }
   }, [currentItem?.id])
 

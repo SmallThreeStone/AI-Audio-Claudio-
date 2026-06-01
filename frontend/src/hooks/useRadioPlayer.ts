@@ -6,7 +6,7 @@ import { skipTrack, skipToTrack, stopRadio, recordListenEvent } from '../api/rad
 
 const playerLog = (...args: unknown[]) => { if (import.meta.env.DEV) console.log(...args) }
 import { getClientId } from '../utils/clientId'
-import { sharedAudioEl } from './useAudioVisualizer'
+import { sharedAudioEl, visualizerSource } from './useAudioVisualizer'
 
 // Module-level guards survive React StrictMode double-mount in development,
 // which resets component refs and would otherwise cause double auto-play.
@@ -19,6 +19,13 @@ let currentToken = 0  // F30: global token — incremented on every track advanc
 function destroyHowl(h: Howl | null) {
   if (!h) return
   deadHowls.add(h)
+  // F32: Synchronously disconnect AudioContext source BEFORE stopping audio.
+  // This prevents the old MediaElementAudioSourceNode from lingering in the
+  // AudioContext graph, which would cause audible overlap with the new track.
+  if (visualizerSource.current) {
+    try { visualizerSource.current.disconnect() } catch { /* ok */ }
+    visualizerSource.current = null
+  }
   h.off('end')
   h.off('play')
   h.off('loaderror')
@@ -27,10 +34,11 @@ function destroyHowl(h: Howl | null) {
   h.off('unlock')
   h.volume(0)
   h.stop()
-  // F28: Destroy underlying HTMLAudioElements — stop streaming & release memory
+  // Destroy underlying HTMLAudioElements — stop streaming & release memory
   const sounds: Array<{ _node?: HTMLAudioElement }> = (h as any)._sounds || []
   for (const s of sounds) {
     if (s._node) {
+      s._node.muted = true  // F32: direct DOM mute — works regardless of AudioContext routing
       s._node.pause()
       s._node.removeAttribute('src')
       s._node.src = ''
