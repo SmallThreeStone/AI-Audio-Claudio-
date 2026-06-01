@@ -300,18 +300,18 @@ export function useRadioPlayer() {
         // F24: Mobile autoplay unlock — retry play once audio context is unlocked
         onunlock: () => {
           if (gen !== generationRef.current) return
-          playerLog('[Player] onunlock — id:', item.id, 'onplayAlreadyFired:', true)
-          // F25: If onplay already fired, the audio is already playing (or stuck).
-          // Re-calling howl.play() resets position to 0 — don't do it.
-          // Just show a notice hinting the user to interact with the page.
+          playerLog('[Player] onunlock — id:', item.id, 'playing:', howl.playing(), 'seek:', howl.seek())
+          // F25: onunlock means audio context is now unlocked (user interacted).
+          // If onplay already fired but audio is stuck (seek=0, not progressing),
+          // re-call play() to resume — the user interaction should satisfy autoplay.
+          if (howlRef.current === howl && !howl.playing()) {
+            playerLog('[Player] onunlock — calling howl.play() to resume')
+            howl.play()
+          }
           if (!autoPlayBlockNoticeShown) {
             autoPlayBlockNoticeShown = true
-            useStore.getState().setNotice('浏览器阻止了自动播放，请点击页面任意位置开始播放')
+            useStore.getState().setNotice('点击开始播放')
           }
-          // Don't call howl.play() here — onplay handles the actual start.
-          // onunlock only means the audio context is now available; if onplay
-          // already ran, the audio should be progressing. If it's not (stuck at 0),
-          // the progress detection in onplay's interval will catch it.
         },
       })
 
