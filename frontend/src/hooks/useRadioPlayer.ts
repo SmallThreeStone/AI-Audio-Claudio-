@@ -14,6 +14,7 @@ let globalAutoPlayed = false
 let globalPlayItemLock = false
 let lastProcessedNewSession = 0  // dedup WS "new session" events
 let autoPlayBlockNoticeShown = false  // show "click to play" notice only once
+const deadHowls = new WeakSet<Howl>()  // F26: track killed Howls so stale intervals self-clean
 
 function destroyHowl(h: Howl | null) {
   if (!h) return
@@ -72,13 +73,15 @@ export function useRadioPlayer() {
       // Cleanup previous Howl completely before creating a new one
       if (howlRef.current) {
         playerLog('[Player] playItem — cleaning up previous Howl')
+        deadHowls.add(howlRef.current)  // F26: mark dead so stale intervals self-clean
         howlRef.current.off('end')
         howlRef.current.off('play')
         howlRef.current.off('loaderror')
         howlRef.current.off('pause')
         howlRef.current.off('playerror')
         howlRef.current.off('unlock')
-        howlRef.current.volume(0)  // Mute instantly
+        howlRef.current.mute(true)
+        howlRef.current.volume(0)
         howlRef.current.stop()
         howlRef.current.unload()
         howlRef.current = null
@@ -173,10 +176,17 @@ export function useRadioPlayer() {
             useStore.getState().addToHistory(item)
           }
 
-          // F25: Stuck detection — if progress stays at 0 for 3s, audio is blocked
+          // F25: Stuck detection + liveness guard
           let stuckSeconds = 0
           let lastSeek = 0
           progressRef.current = setInterval(() => {
+            // F26: Liveness guard — if a new Howl was created (skip/next), self-cleanup
+            if (howl !== howlRef.current) {
+              playerLog('[Player] interval SELF-CLEANUP — howl no longer active, id:', item.id)
+              clearInterval(progressRef.current!)
+              progressRef.current = undefined
+              return
+            }
             const seek = howl.seek() as number
             setCurrentTime(seek)
             radioWS.send({ type: 'progress_report', queue_item_id: item.id, position_seconds: seek })
@@ -463,13 +473,15 @@ export function useRadioPlayer() {
     // off() removes all event listeners so stop() can NOT trigger onend/onplay.
     ++generationRef.current
     if (howlRef.current) {
+      deadHowls.add(howlRef.current)  // mark as dead so stale intervals self-clean
       howlRef.current.off('end')
       howlRef.current.off('play')
       howlRef.current.off('loaderror')
       howlRef.current.off('pause')
       howlRef.current.off('playerror')
       howlRef.current.off('unlock')
-      howlRef.current.volume(0)  // Mute instantly to prevent any residual audio
+      howlRef.current.mute(true)  // F26: mute BEFORE stop to guarantee silence
+      howlRef.current.volume(0)   // double guarantee — no residual audio
       howlRef.current.stop()
       howlRef.current.unload()
       howlRef.current = null
