@@ -173,6 +173,11 @@ export function useRadioPlayer() {
           }
 
           // F25: Stuck detection + liveness guard
+          // F29: Clear any previous interval (onplay can fire twice from onunlock → howl.play())
+          if (progressRef.current) {
+            clearInterval(progressRef.current)
+            progressRef.current = undefined
+          }
           let stuckSeconds = 0
           let lastSeek = 0
           progressRef.current = setInterval(() => {
@@ -617,6 +622,7 @@ export function useRadioPlayer() {
         const dur = howl.duration()
         setDuration(dur)
         recordListenEvent(lastSong.id, 'started')
+        if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
         progressRef.current = setInterval(() => {
           const seek = howl.seek() as number
           setCurrentTime(seek)
