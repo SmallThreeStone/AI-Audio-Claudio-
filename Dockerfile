@@ -10,17 +10,13 @@ RUN npm run build
 FROM python:3.11-slim-bookworm
 WORKDIR /app
 
-# Use Aliyun Debian mirrors for faster downloads in China
-RUN sed -i 's|deb.debian.org|mirrors.cloud.tencent.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's|http://deb.debian.org|http://mirrors.cloud.tencent.com|g' /etc/apt/sources.list
+# Install Node.js 20 binary (use npm mirror, avoid apt-get entirely)
+RUN python -c "import urllib.request; urllib.request.urlretrieve('https://registry.npmmirror.com/-/binary/node/v20.20.2/node-v20.20.2-linux-x64.tar.xz', '/tmp/node.tar.xz')" && \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && \
+    rm /tmp/node.tar.xz && \
+    node --version && npm --version
 
-# Install Node.js 20+ for NetEase sidecar
-RUN apt-get update && apt-get install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install sidecar globally (avoid runtime npx downloads)
+# Install sidecar globally
 RUN npm install -g @neteasecloudmusicapienhanced/api
 
 # Install Python dependencies
@@ -36,12 +32,9 @@ COPY --from=frontend-build /app/frontend/dist frontend/dist/
 # Create data directories
 RUN mkdir -p backend/data backend/data/tts_cache
 
-# Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8000/api/health || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
 
-# Start backend (sidecar is auto-managed by sidecar_manager.py)
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
