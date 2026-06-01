@@ -6,7 +6,7 @@ import { skipTrack, skipToTrack, stopRadio, recordListenEvent } from '../api/rad
 
 const playerLog = (...args: unknown[]) => { if (import.meta.env.DEV) console.log(...args) }
 import { getClientId } from '../utils/clientId'
-import { sharedAudioEl, visualizerSource } from './useAudioVisualizer'
+import { sharedAudioEl } from './useAudioVisualizer'
 
 // Module-level guards survive React StrictMode double-mount in development,
 // which resets component refs and would otherwise cause double auto-play.
@@ -19,13 +19,6 @@ let currentToken = 0  // F30: global token — incremented on every track advanc
 function destroyHowl(h: Howl | null) {
   if (!h) return
   deadHowls.add(h)
-  // F32: Synchronously disconnect AudioContext source BEFORE stopping audio.
-  // This prevents the old MediaElementAudioSourceNode from lingering in the
-  // AudioContext graph, which would cause audible overlap with the new track.
-  if (visualizerSource.current) {
-    try { visualizerSource.current.disconnect() } catch { /* ok */ }
-    visualizerSource.current = null
-  }
   h.off('end')
   h.off('play')
   h.off('loaderror')
@@ -38,7 +31,6 @@ function destroyHowl(h: Howl | null) {
   const sounds: Array<{ _node?: HTMLAudioElement }> = (h as any)._sounds || []
   for (const s of sounds) {
     if (s._node) {
-      s._node.muted = true  // F32: direct DOM mute — works regardless of AudioContext routing
       s._node.pause()
       s._node.removeAttribute('src')
       s._node.src = ''
@@ -164,8 +156,14 @@ export function useRadioPlayer() {
           playerLog('[Player] onplay — id:', item.id, 'type:', item.item_type, 'duration:', howl.duration(), 'token:', token)
 
           autoPlayBlockNoticeShown = false
-          const audioNode = (howl as any)._sounds?.[0]?._node as HTMLAudioElement | undefined
-          if (audioNode) sharedAudioEl.current = audioNode
+          // F33: Find the ACTIVE playing audio node — onunlock→play() creates extra _sounds
+          // entries, so _sounds[0]._node may be stopped at pos 0 while _sounds[1]._node is playing.
+          const getPlayingNode = () => {
+            const sounds: Array<{ _node?: HTMLAudioElement; _paused?: boolean }> = (howl as any)._sounds || []
+            return sounds.find(s => s._node && !s._paused)?._node
+          }
+          const playingNode = getPlayingNode()
+          if (playingNode) sharedAudioEl.current = playingNode
 
           setIsAudioLoading(false)
           setIsPlaying(true)
@@ -178,26 +176,26 @@ export function useRadioPlayer() {
 
           if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
           let stuckSeconds = 0
-          let lastSeek = 0
           progressRef.current = setInterval(() => {
             if (token !== currentToken || howl !== howlRef.current) {
               clearInterval(progressRef.current!)
               progressRef.current = undefined
               return
             }
-            const seek = howl.seek() as number
+            // Read directly from the active HTMLAudioElement to avoid howl.seek() reading a dead sound
+            const node = getPlayingNode() || ((howl as any)._sounds?.[0]?._node)
+            const seek = node ? node.currentTime : (howl.seek() as number)
             setCurrentTime(seek)
             radioWS.send({ type: 'progress_report', queue_item_id: item.id, position_seconds: seek })
-            if (seek === 0 && lastSeek === 0) {
+            if (seek < 0.05) {
               stuckSeconds++
-              if (stuckSeconds >= 3) {
+              if (stuckSeconds >= 5) {
                 playerLog('[Player] STUCK — auto-skipping')
                 clearInterval(progressRef.current!); progressRef.current = undefined
                 advanceTo(currentIdxRef.current + 1)
                 skipTrack()
               }
             } else { stuckSeconds = 0 }
-            lastSeek = seek
           }, 1000)
         },
         onplayerror: () => {
