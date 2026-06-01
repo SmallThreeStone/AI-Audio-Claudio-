@@ -27,6 +27,16 @@ function destroyHowl(h: Howl | null) {
   h.off('unlock')
   h.volume(0)
   h.stop()
+  // F28: Destroy underlying HTMLAudioElements — stop streaming & release memory
+  const sounds: Array<{ _node?: HTMLAudioElement }> = (h as any)._sounds || []
+  for (const s of sounds) {
+    if (s._node) {
+      s._node.pause()
+      s._node.removeAttribute('src')
+      s._node.src = ''
+      s._node.load()
+    }
+  }
 }
 
 export function useRadioPlayer() {
@@ -73,12 +83,7 @@ export function useRadioPlayer() {
       // Cleanup previous Howl completely before creating a new one
       if (howlRef.current) {
         playerLog('[Player] playItem — cleaning up previous Howl')
-        deadHowls.add(howlRef.current)
-        const old = howlRef.current
-        old.off('end'); old.off('play'); old.off('loaderror')
-        old.off('pause'); old.off('playerror'); old.off('unlock')
-        old.volume(0)
-        old.stop()
+        destroyHowl(howlRef.current)
         howlRef.current = null
         sharedAudioEl.current = null
       }
@@ -121,11 +126,7 @@ export function useRadioPlayer() {
       loadTimerRef.current = setTimeout(() => {
         console.warn('[Player] load TIMEOUT — id:', item.id, 'src:', src.substring(0, 60))
         if (howlRef.current === howl) {
-          howl.off('play')
-          howl.off('loaderror')
-          howl.off('playerror')
-          howl.stop()
-          howl.unload()
+          destroyHowl(howl)
           howlRef.current = null
           sharedAudioEl.current = null
         }
@@ -192,9 +193,7 @@ export function useRadioPlayer() {
                 playerLog('[Player] STUCK detected — progress at 0 for 3s, skipping')
                 clearInterval(progressRef.current!)
                 progressRef.current = undefined
-                howl.off('play'); howl.off('end'); howl.off('loaderror')
-                howl.off('playerror'); howl.off('pause'); howl.off('unlock')
-                deadHowls.add(howl); howl.volume(0); howl.stop()
+                destroyHowl(howl)
                 if (howlRef.current === howl) {
                   howlRef.current = null
                   sharedAudioEl.current = null
@@ -217,9 +216,7 @@ export function useRadioPlayer() {
           if (gen !== generationRef.current) return
           clearLoadTimer()
           console.warn('[Player] onplayerror — id:', item.id, 'gen:', gen)
-          deadHowls.add(howl)
-          howl.volume(0)
-          howl.stop()
+          destroyHowl(howl)
           if (howlRef.current === howl) {
             howlRef.current = null
             sharedAudioEl.current = null
@@ -280,9 +277,7 @@ export function useRadioPlayer() {
           setIsPlaying(false)
           useStore.getState().setNotice('歌曲加载失败，已自动跳过')
 
-          deadHowls.add(howl)
-          howl.volume(0)
-          howl.stop()
+          destroyHowl(howl)
           if (howlRef.current === howl) {
             howlRef.current = null
             sharedAudioEl.current = null
@@ -472,12 +467,7 @@ export function useRadioPlayer() {
     // off() removes all event listeners so stop() can NOT trigger onend/onplay.
     ++generationRef.current
     if (howlRef.current) {
-      deadHowls.add(howlRef.current)
-      const old = howlRef.current
-      old.off('end'); old.off('play'); old.off('loaderror')
-      old.off('pause'); old.off('playerror'); old.off('unlock')
-      old.volume(0)
-      old.stop()
+      destroyHowl(howlRef.current)
       howlRef.current = null
       sharedAudioEl.current = null
     }
