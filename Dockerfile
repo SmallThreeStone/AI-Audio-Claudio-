@@ -10,11 +10,21 @@ RUN npm run build
 FROM python:3.11-slim-bookworm
 WORKDIR /app
 
-# Install Node.js 20 binary (use npm mirror, avoid apt-get entirely)
-RUN python -c "import urllib.request; urllib.request.urlretrieve('https://registry.npmmirror.com/-/binary/node/v20.20.2/node-v20.20.2-linux-x64.tar.xz', '/tmp/node.tar.xz')" && \
-    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && \
-    rm /tmp/node.tar.xz && \
-    node --version && npm --version
+# Install Node.js 20 binary via Python (no apt-get/tar needed)
+RUN python -c "
+import urllib.request, tarfile, io, os
+url = 'https://registry.npmmirror.com/-/binary/node/v20.20.2/node-v20.20.2-linux-x64.tar.xz'
+print('Downloading Node.js...')
+data = urllib.request.urlopen(url, timeout=120).read()
+print(f'Downloaded {len(data)} bytes, extracting...')
+with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as tf:
+    for member in tf.getmembers():
+        # Strip top-level directory (node-v20.20.2-linux-x64/)
+        member.name = '/'.join(member.name.split('/')[1:])
+        if member.name:
+            tf.extract(member, '/usr/local')
+print('Node.js installed.')
+" && node --version && npm --version
 
 # Install sidecar globally
 RUN npm install -g @neteasecloudmusicapienhanced/api
