@@ -16,7 +16,12 @@ let globalAutoPlayed = false
 let lastProcessedNewSession = 0  // dedup WS "new session" events
 let autoPlayBlockNoticeShown = false  // show "click to play" notice only once
 const deadHowls = new WeakSet<Howl>()
-let currentToken = 0  // F30: global token — incremented on every track advance, invalidates all stale callbacks/intervals
+let currentToken = 0
+// F38: Module-level Howl ref — survives React StrictMode double-mount.
+// useRef would create two separate refs, and callbacks from the first mount
+// can't see updates made by the second mount.
+let _howl: Howl | null = null
+let _playingSession: number | null = null  // F38: module-level, survives StrictMode
 
 function destroyHowl(h: Howl | null) {
   if (!h) return
@@ -42,10 +47,8 @@ export function useRadioPlayer() {
     setCurrentTime, setDuration, setCurrentItem, setIsPlaying,
     setCurrentIndex, setSession, setQueue, setIsAudioLoading,
   } = useStore()
-  const howlRef = useRef<Howl | null>(null)
   const progressRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const currentIdxRef = useRef(currentIndex)
-  const playingSessionRef = useRef<number | null>(null)
   const autoPlayedRef = useRef(false)
   const isSkippingRef = useRef(false)
   const queueIdxBeforeHistory = useRef(0)
@@ -60,16 +63,17 @@ export function useRadioPlayer() {
   const advanceTo = useCallback((nextIndex: number) => {
     ++currentToken
     const myToken = currentToken
-    const hadHowl = !!howlRef.current
+    const hadHowl = !!_howl
     playerLog('advanceTo idx=', nextIndex, 'token=', myToken, 'hadHowl=', hadHowl)
 
-    if (howlRef.current) {
-      const sounds: Array<{ _node?: HTMLAudioElement }> = (howlRef.current as any)._sounds || []
+    if (_howl) {
+      const sounds: Array<{ _node?: HTMLAudioElement }> = (_howl as any)._sounds || []
       playerLog('advanceTo destroying Howl, _sounds.length=', sounds.length,
         sounds.map((s, i) => `[${i}]:muted=${s._node?.muted},paused=${s._node?.paused}`).join(' '))
-      destroyHowl(howlRef.current)
-      howlRef.current = null
+      destroyHowl(_howl)
+      _howl = null
       sharedAudioEl.current = null
+      playerLog('howlRef → null (advanceTo cleanup)')
     }
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
     if (loadTimerRef.current) { clearTimeout(loadTimerRef.current); loadTimerRef.current = undefined }
@@ -102,7 +106,7 @@ export function useRadioPlayer() {
       setCurrentItem(item)
       setCurrentIndex(index)
       currentIdxRef.current = index
-      playingSessionRef.current = useStore.getState().session?.id ?? null
+      _playingSession = useStore.getState().session?.id ?? null
 
       const isTTS = item.item_type.startsWith('tts')
       const src = isTTS ? item.tts_audio_url : `/api/audio/music/${item.song_id}?cid=${getClientId()}`
@@ -163,7 +167,7 @@ export function useRadioPlayer() {
           if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
           let stuckSeconds = 0
           progressRef.current = setInterval(() => {
-            if (token !== currentToken || howl !== howlRef.current) {
+            if (token !== currentToken || howl !== _howl) {
               clearInterval(progressRef.current!); progressRef.current = undefined
               return
             }
@@ -220,7 +224,7 @@ export function useRadioPlayer() {
         onunlock: () => {
           if (token !== currentToken) return
           playerLog('[Player] onunlock — id:', item.id)
-          if (howlRef.current === howl && !howl.playing()) {
+          if (_howl === howl && !howl.playing()) {
             howl.play()
           }
           if (!autoPlayBlockNoticeShown) {
@@ -231,7 +235,8 @@ export function useRadioPlayer() {
       })
 
       howl.play()
-      howlRef.current = howl
+      _howl = howl
+      playerLog('howlRef → Howl id=', item.id, 'type=', item.item_type)
       howl.volume(store.volume)
     },
     [queue.length],
@@ -239,7 +244,7 @@ export function useRadioPlayer() {
 
   // Auto-play when queue updates (page refresh / new session)
   useEffect(() => {
-    if (queue.length > 0 && !howlRef.current && !globalAutoPlayed && !autoPlayedRef.current) {
+    if (queue.length > 0 && !_howl && !globalAutoPlayed && !autoPlayedRef.current) {
       playerLog('[Player] auto-play triggered — queue length:', queue.length, 'currentIndex:', useStore.getState().currentIndex)
       autoPlayedRef.current = true
       globalAutoPlayed = true
@@ -247,7 +252,7 @@ export function useRadioPlayer() {
       // and ensure all batched state updates have flushed before starting playback.
       // globalAutoPlayed (module-level) handles the double-mount guard, so 30ms is enough.
       const timer = setTimeout(() => {
-        if (howlRef.current) {
+        if (_howl) {
           playerLog('[Player] auto-play CANCELLED — howlRef already set by another path')
           return
         }
@@ -265,9 +270,10 @@ export function useRadioPlayer() {
     if (queue.length === 0) {
       // Session ended — stop playback and reset state
       ++currentToken
-      if (howlRef.current) {
-        destroyHowl(howlRef.current)
-        howlRef.current = null
+      if (_howl) {
+        playerLog('howlRef → null (queue empty cleanup)')
+        destroyHowl(_howl)
+        _howl = null
         sharedAudioEl.current = null
       }
       if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
@@ -286,7 +292,7 @@ export function useRadioPlayer() {
       const newSessionId = (msg.session as Record<string, unknown>)?.id as number | undefined
       const initiatorId = (msg.initiator_client_id as string) || ''
       // Reset player only when a genuinely new session arrives (not skip/refill/hydrate)
-      if (items && items.length > 0 && newSessionId !== undefined && newSessionId !== playingSessionRef.current) {
+      if (items && items.length > 0 && newSessionId !== undefined && newSessionId !== _playingSession) {
         // Dedup: if we already processed this session (duplicate WS message or handler),
         // skip — otherwise two playItem chains race and kill each other's Howls.
         if (newSessionId === lastProcessedNewSession) {
@@ -294,13 +300,13 @@ export function useRadioPlayer() {
           return
         }
         lastProcessedNewSession = newSessionId
-        playerLog('[Player] WS new session detected — id:', newSessionId, 'prev playingSession:', playingSessionRef.current)
+        playerLog('[Player] WS new session detected — id:', newSessionId, 'prev playingSession:', _playingSession)
         // Page refresh recovery: if playingSessionRef was null (just refreshed) AND
         // the store already has a queue (hydrate completed), skip — auto-play handles it.
         // Use getState() not autoPlayedRef because the WS message may arrive before
         // React re-renders (Zustand state is synchronous, refs update in effects).
-        const wasNull = playingSessionRef.current === null
-        playingSessionRef.current = newSessionId
+        const wasNull = _playingSession === null
+        _playingSession = newSessionId
         if (wasNull && useStore.getState().queue.length > 0) {
           playerLog('[Player] WS new session — queue already hydrated, deferring to auto-play')
           return
@@ -314,7 +320,7 @@ export function useRadioPlayer() {
         }
         autoPlayedRef.current = true
         setTimeout(() => {
-          if (howlRef.current) {
+          if (_howl) {
             playerLog('[Player] WS playItem CANCELLED — howlRef already set')
             return
           }
@@ -330,8 +336,8 @@ export function useRadioPlayer() {
 
   // Volume sync
   useEffect(() => {
-    if (howlRef.current) {
-      howlRef.current.volume(volume)
+    if (_howl) {
+      _howl.volume(volume)
     }
   }, [volume])
 
@@ -341,7 +347,7 @@ export function useRadioPlayer() {
     playerLog('SKIP currentIdx=', currentIdxRef.current)
 
     const store = useStore.getState()
-    if (howlRef.current && store.currentItem && store.currentItem.item_type === 'song') {
+    if (_howl && store.currentItem && store.currentItem.item_type === 'song') {
       recordListenEvent(store.currentItem.id, 'skipped', store.currentTime)
     }
 
@@ -361,7 +367,7 @@ export function useRadioPlayer() {
       if (idx < 0 || idx === store.currentIndex) return
 
       // Track skip for current item
-      if (howlRef.current && store.currentItem && store.currentItem.item_type === 'song') {
+      if (_howl && store.currentItem && store.currentItem.item_type === 'song') {
         recordListenEvent(store.currentItem.id, 'skipped', store.currentTime)
       }
 
@@ -393,9 +399,9 @@ export function useRadioPlayer() {
 
     // F20: Clean up existing Howl before creating history Howl
     ++currentToken
-    if (howlRef.current) {
-      destroyHowl(howlRef.current)
-      howlRef.current = null
+    if (_howl) {
+      destroyHowl(_howl)
+      _howl = null
       sharedAudioEl.current = null
     }
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
@@ -407,7 +413,7 @@ export function useRadioPlayer() {
     // Mark history mode: -1 means playing outside the queue
     currentIdxRef.current = -1
     setCurrentIndex(-1)
-    playingSessionRef.current = store.session?.id ?? null
+    _playingSession = store.session?.id ?? null
 
     const src = `/api/audio/music/${lastSong.song_id}?cid=${getClientId()}`
 
@@ -457,8 +463,8 @@ export function useRadioPlayer() {
         console.warn('[Player] previous onplayerror — id:', lastSong.id)
         howl.stop()
         howl.unload()
-        if (howlRef.current === howl) {
-          howlRef.current = null
+        if (_howl === howl) {
+          _howl = null
           sharedAudioEl.current = null
         }
         setIsPlaying(false)
@@ -489,8 +495,8 @@ export function useRadioPlayer() {
         console.warn('[Player] previous onloaderror — id:', lastSong.id, 'error:', err)
         store.setNotice('无法播放此歌曲')
         setIsPlaying(false)
-        if (howlRef.current === howl) {
-          howlRef.current = null
+        if (_howl === howl) {
+          _howl = null
           sharedAudioEl.current = null
         }
         // F2: Restore queue position on error
@@ -501,12 +507,12 @@ export function useRadioPlayer() {
       onunlock: () => {
         if (prevGen !== prevGenerationRef.current) return
         playerLog('[Player] previous onunlock — retrying play for id:', lastSong.id)
-        if (howlRef.current === howl && !howl.playing()) {
+        if (_howl === howl && !howl.playing()) {
           howl.play()
         }
       },
     })
-    howlRef.current = howl
+    _howl = howl
     howl.play()
     setCurrentItem(lastSong)
 
@@ -514,13 +520,13 @@ export function useRadioPlayer() {
   }, [queue, advanceTo])
 
   const togglePause = useCallback(() => {
-    if (!howlRef.current) return
+    if (!_howl) return
     // F5: Use Howl.playing() for ground-truth state, not store which can drift
-    if (howlRef.current.playing()) {
-      howlRef.current.pause()
+    if (_howl.playing()) {
+      _howl.pause()
       setIsPlaying(false)
     } else {
-      howlRef.current.play()
+      _howl.play()
       setIsPlaying(true)
     }
   }, [setIsPlaying])
@@ -528,9 +534,9 @@ export function useRadioPlayer() {
   const stop = useCallback(() => {
     playerLog('[Player] stop')
     ++currentToken
-    if (howlRef.current) {
-      destroyHowl(howlRef.current)
-      howlRef.current = null
+    if (_howl) {
+      destroyHowl(_howl)
+      _howl = null
       sharedAudioEl.current = null
     }
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
@@ -547,8 +553,8 @@ export function useRadioPlayer() {
   }, [setIsPlaying, setCurrentTime, setCurrentItem, setCurrentIndex, setQueue, setSession])
 
   const seek = useCallback((time: number) => {
-    if (howlRef.current) {
-      howlRef.current.seek(time)
+    if (_howl) {
+      _howl.seek(time)
       setCurrentTime(time)
     }
   }, [setCurrentTime])
