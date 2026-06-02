@@ -24,7 +24,7 @@ export default function ChatInput() {
   const [showAdjust, setShowAdjust] = useState(false)
   const [adjustMoodText, setAdjustMoodText] = useState('')
   const [adjusting, setAdjusting] = useState(false)
-  const { setIsGenerating, isGenerating, selectedPersona, demoMode, setDemoMode, user, session } = useStore()
+  const { setIsGenerating, isGenerating, generationMessage, generationStage, selectedPersona, demoMode, setDemoMode, user, session } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -166,7 +166,7 @@ export default function ChatInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="深空广播...描述你的心情或场景，比如「加班写代码到吐了，来点能撑住的」"
+          placeholder="描述心情、天气、场景，AI DJ 会为你开播"
           disabled={isSubmitting || isGenerating}
           className="dj-command-input"
         />
@@ -186,6 +186,20 @@ export default function ChatInput() {
         </button>
       </div>
 
+      {isGenerating && (
+        <div className="signal-generation-card">
+          <div>
+            <span>{generationStage ? '正在生成' : '正在调频'}</span>
+            <strong>{generationMessage || 'AI DJ 正在理解你的心情'}</strong>
+          </div>
+          <div className="signal-generation-pulse">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      )}
+
       {/* Greeting banner */}
       {showIdle && greeting && (
         <button
@@ -199,16 +213,22 @@ export default function ChatInput() {
 
       {/* Quick prompts — personalized when available */}
       {showIdle && (
-        <div className="signal-chip-row">
-          {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (
-            <button
-              key={prompt}
-              onClick={() => handleSubmit(prompt)}
-              className="signal-chip"
-            >
-              {prompt}
-            </button>
-          ))}
+        <div className="signal-suggestion-block">
+          <div className="signal-suggestion-title">
+            <span />
+            <p>AI 推荐点播</p>
+          </div>
+          <div className="signal-chip-row">
+            {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => handleSubmit(prompt)}
+                className="signal-chip"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

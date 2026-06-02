@@ -31,10 +31,12 @@ export default function RadioPlayer() {
   }, [notice, setNotice])
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
+  const activeStageIdx = currentStageIdx >= 0 ? currentStageIdx : 0
 
   const coverUrl = currentItem?.cover_url
-  const title = currentItem?.song_name || session?.session_theme || 'Starbound Radio'
-  const subtitle = currentItem?.artist || session?.persona || 'DJ 0430 - signal standby'
+  const isIdle = !session && !currentItem && !isGenerating
+  const title = currentItem?.song_name || session?.session_theme || '等待你的心情信号'
+  const subtitle = currentItem?.artist || session?.persona || '描述一句话，AI DJ 会为你开播'
 
   return (
     <div className="radio-player-stage">
@@ -62,38 +64,38 @@ export default function RadioPlayer() {
       </div>
 
       {isGenerating && (
-        <div className="w-full space-y-2">
-          <p className="text-center text-xs text-[var(--color-radio-muted)]">
+        <div className="radio-generation-panel">
+          <p>
             {generationMessage || '深空探测扫描中...'}
           </p>
-          <div className="flex items-center gap-1 justify-center">
+          <div className="radio-generation-dots">
             {STAGES.map((s, i) => (
-              <div key={s.key} className="flex items-center gap-1">
+              <div key={s.key}>
                 <div
-                  className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                    i < currentStageIdx
-                      ? 'bg-green-400 scale-75'
-                      : i === currentStageIdx
-                        ? 'bg-[var(--color-radio-accent)] animate-pulse'
-                        : 'bg-[var(--color-radio-border)]'
+                  className={`radio-generation-dot ${
+                    i < activeStageIdx
+                      ? 'is-done'
+                      : i === activeStageIdx
+                        ? 'is-active'
+                        : ''
                   }`}
                 />
                 {i < STAGES.length - 1 && (
                   <div
-                    className={`w-6 h-0.5 rounded transition-colors duration-300 ${
-                      i < currentStageIdx ? 'bg-green-400' : 'bg-[var(--color-radio-border)]'
+                    className={`radio-generation-line ${
+                      i < activeStageIdx ? 'is-done' : ''
                     }`}
                   />
                 )}
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[10px] text-[var(--color-radio-muted)]">
+          <div className="radio-generation-labels">
             {STAGES.map((s, i) => (
               <span
                 key={s.key}
                 className={
-                  i <= currentStageIdx ? 'text-[var(--color-radio-text)]' : ''
+                  i <= activeStageIdx ? 'is-lit' : ''
                 }
               >
                 {s.label}
@@ -139,10 +141,23 @@ export default function RadioPlayer() {
       )}
 
       <div className="radio-title-block">
-        <p className="radio-title-kicker">{isGenerating ? generationMessage || 'Signal scanning' : session?.session_theme || 'Galaxy navigation'}</p>
+        <p className="radio-title-kicker">{isGenerating ? generationMessage || '正在调频' : session?.session_theme || 'iRadio 待机频道'}</p>
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
+
+      {isIdle && (
+        <div className="radio-standby-card">
+          <div>
+            <span>当前状态</span>
+            <strong>待机</strong>
+          </div>
+          <div>
+            <span>推荐操作</span>
+            <strong>从左侧输入心情开始</strong>
+          </div>
+        </div>
+      )}
 
       <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
 

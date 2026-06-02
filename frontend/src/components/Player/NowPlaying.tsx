@@ -17,7 +17,7 @@ export default function NowPlaying() {
     return (
       <div className="text-center py-2">
         <p className="text-[var(--color-radio-text)] text-base font-medium mb-1">
-          Claude FM 私人 AI 电台
+          iRadio 私人 AI 电台
         </p>
         <p className="text-[var(--color-radio-muted)] text-sm leading-relaxed">
           在下方用自然语言描述你的心情或场景
@@ -50,7 +50,7 @@ export default function NowPlaying() {
           <p className="text-xs text-[var(--color-radio-muted)]">
             {isAudioLoading ? (
               <span className="animate-pulse">正在加载音频...</span>
-            ) : isPlaying ? 'Now Playing' : 'Up Next'}
+            ) : isPlaying ? '正在播放' : '即将播放'}
           </p>
           <p className="text-base font-semibold truncate">
             {currentItem.song_name || '未知歌曲'}

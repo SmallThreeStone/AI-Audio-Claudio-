@@ -2,15 +2,42 @@ import { useStore } from '../../store'
 import QueueItem from './QueueItem'
 
 export default function QueuePanel({ compact }: { compact?: boolean }) {
-  const { queue, session, currentIndex, demoMode } = useStore()
+  const { queue, session, currentIndex, demoMode, isGenerating, generationStage, generationMessage } = useStore()
 
   const validItems = queue.filter(
     (item) => item.status !== 'error' && item.status !== 'skipped'
   )
-  if (!session || validItems.length === 0) return null
+  if (!session || validItems.length === 0) {
+    const emptySteps = [
+      { key: 'analyzing', label: '读取心情' },
+      { key: 'building', label: '匹配歌单' },
+      { key: 'preparing', label: '准备开播' },
+    ]
+    const activeStep = emptySteps.findIndex((step) => step.key === generationStage)
+
+    return (
+      <div className={compact ? 'queue-panel-shell queue-panel-shell--empty' : 'queue-panel-shell queue-panel-shell--mobile'}>
+        <div className={`queue-empty-state ${isGenerating ? 'queue-empty-state--generating' : ''}`}>
+          <span className="queue-empty-state__kicker">{isGenerating ? '生成中' : '待开播'}</span>
+          <h3>{isGenerating ? 'AI DJ 正在搭建频道' : '等待你的心情信号'}</h3>
+          <p>{isGenerating ? generationMessage || '正在分析你的描述、筛选歌曲，并生成 DJ 串词。' : '在左侧输入一句话，AI DJ 会生成串词、匹配歌曲，并把播放队列显示在这里。'}</p>
+          <div className="queue-empty-steps">
+            {emptySteps.map((step, index) => (
+              <span
+                key={step.key}
+                className={isGenerating && (index <= activeStep || activeStep < 0 && index === 0) ? 'active' : ''}
+              >
+                {step.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const upcoming = validItems.filter((item) => item.position >= currentIndex)
-  const visible = compact ? upcoming.slice(0, 5) : upcoming.slice(0, 10)
+  const visible = compact ? upcoming : upcoming.slice(0, 10)
 
   return (
     <div className={compact ? 'queue-panel-shell' : 'queue-panel-shell queue-panel-shell--mobile'}>
@@ -24,7 +51,7 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
           </span>
         )}
         <span>
-          {upcoming.length} 项
+          当前及后续 {upcoming.length} 项
         </span>
       </div>
 
