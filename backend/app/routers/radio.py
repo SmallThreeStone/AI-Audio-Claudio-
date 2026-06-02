@@ -366,11 +366,15 @@ async def get_queue(request: Request, session: AsyncSession = Depends(get_sessio
     if not active:
         return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
 
-    # Auto-expire sessions from previous days
-    if active.created_at and active.created_at.date() < datetime.date.today():
-        active.status = "completed"
-        await session.commit()
-        return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
+    # Auto-expire sessions from previous days or >6 hours old (URLs all expired)
+    now = datetime.datetime.now()
+    if active.created_at:
+        age_hours = (now - active.created_at).total_seconds() / 3600
+        if active.created_at.date() < now.date() or age_hours > 6:
+            logger.info("[Radio] Auto-expiring old session_id=%s age=%.1fh", active.id, age_hours)
+            active.status = "completed"
+            await session.commit()
+            return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
 
     logger.info("[Radio] GET /queue user_id=%s session_id=%s status=%s played=%s total=%s",
                 user_id, active.id, active.status, active.played_items, active.total_items)

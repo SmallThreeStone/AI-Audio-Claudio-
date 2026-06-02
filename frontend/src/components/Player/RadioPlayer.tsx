@@ -83,8 +83,17 @@ export default function RadioPlayer() {
       )}
 
       {session?.session_theme && (
-        <div className="text-xs text-[var(--color-radio-gold)] font-medium tracking-wider uppercase">
-          {session.session_theme}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[var(--color-radio-gold)] font-medium tracking-wider uppercase">
+            {session.session_theme}
+          </span>
+          <button
+            onClick={stop}
+            title="换台"
+            className="text-[10px] text-[var(--color-radio-muted)] hover:text-[var(--color-radio-gold)] border border-[var(--color-radio-border)]/30 hover:border-[var(--color-radio-gold)]/40 rounded-full px-2 py-0.5 transition-colors"
+          >
+            换台 ↻
+          </button>
         </div>
       )}
 
