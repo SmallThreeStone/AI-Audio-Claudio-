@@ -25,11 +25,11 @@
   border-radius: 50%;
   background: repeating-radial-gradient(
     circle at center,
-    #1a1a1a 0px,
-    #2a2a2a 2px,
-    #1a1a1a 4px
+    #0d1528 0px,
+    #1a2a4a 2px,
+    #0d1528 4px
   );
-  box-shadow: 0 0 40px rgba(233, 69, 96, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 40px var(--color-radio-glow), 0 0 60px rgba(124, 92, 231, 0.08), inset 0 0 20px rgba(0, 0, 0, 0.6);
   position: relative;
   transition: transform 0.5s ease;
 }
@@ -51,7 +51,7 @@
   width: 29%;
   height: 29%;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, #e94560, #8b0000);
+  background: radial-gradient(circle at 40% 40%, var(--color-radio-accent), #00695c);
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
@@ -81,8 +81,8 @@
 }
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 5px rgba(233, 69, 96, 0.3); }
-  50% { box-shadow: 0 0 20px rgba(233, 69, 96, 0.6); }
+  0%, 100% { box-shadow: 0 0 5px var(--color-radio-glow); }
+  50% { box-shadow: 0 0 20px rgba(0, 229, 192, 0.3); }
 }
 
 /* Equalizer bars */
@@ -114,8 +114,8 @@
 /* Subtle background shimmer */
 .radio-bg {
   background:
-    radial-gradient(ellipse at 20% 50%, rgba(233, 69, 96, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 50%, rgba(100, 100, 255, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 20% 50%, rgba(0, 229, 192, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 50%, rgba(124, 92, 231, 0.04) 0%, transparent 50%),
     var(--color-radio-bg);
 }
 
@@ -199,7 +199,7 @@
 
   .radio-bg {
     background:
-      radial-gradient(ellipse at 50% 30%, rgba(233, 69, 96, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 30%, rgba(0, 229, 192, 0.05) 0%, transparent 50%),
       var(--color-radio-bg);
   }
 }
@@ -238,7 +238,7 @@
   /* Static breathing ring fallback */
   .vinyl-disc::after {
     animation: none !important;
-    box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+    box-shadow: 0 0 20px var(--color-radio-glow);
   }
 
   .lyric-line-active {
@@ -295,7 +295,7 @@
   font-size: 1.05rem;
   font-weight: 600;
   color: var(--color-radio-accent);
-  text-shadow: 0 0 12px rgba(233, 69, 96, 0.3);
+  text-shadow: 0 0 12px var(--color-radio-glow);
 }
 
 /* Hide scrollbar for lyrics */

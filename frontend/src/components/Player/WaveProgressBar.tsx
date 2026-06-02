@@ -80,8 +80,8 @@ export default function WaveProgressBar({ onSeek }: Props) {
         >
           <defs>
             <linearGradient id="waveFill" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#e94560" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="#f0c060" stopOpacity="0.85" />
+              <stop offset="0%" stopColor="#00e5c0" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#7c5ce7" stopOpacity="0.85" />
             </linearGradient>
             <clipPath id="waveClip">
               <rect x="0" y="0" width={px} height="40" />

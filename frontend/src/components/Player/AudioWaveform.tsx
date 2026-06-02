@@ -94,15 +94,15 @@ export default function AudioWaveform() {
 
     if (screenW <= 400) {
       // Single ring — bass only, fuller
-      drawRing(0, binCount, maxRadius * 0.85, 24, '#e94560')
+      drawRing(0, binCount, maxRadius * 0.85, 24, '#00e5c0')
     } else if (screenW <= 768) {
       // Dual ring — bass + mids
-      drawRing(0, Math.floor(binCount / 2), maxRadius * 0.86, 22, '#e94560')
-      drawRing(Math.floor(binCount / 2), binCount, maxRadius * 0.76, 16, '#f0c060')
+      drawRing(0, Math.floor(binCount / 2), maxRadius * 0.86, 22, '#00e5c0')
+      drawRing(Math.floor(binCount / 2), binCount, maxRadius * 0.76, 16, '#7c5ce7')
     } else {
       // Triple ring — full spectrum
-      drawRing(0, bandSize, maxRadius * 0.88, 22, '#e94560')
-      drawRing(bandSize, bandSize * 2, maxRadius * 0.78, 18, '#f0c060')
+      drawRing(0, bandSize, maxRadius * 0.88, 22, '#00e5c0')
+      drawRing(bandSize, bandSize * 2, maxRadius * 0.78, 18, '#7c5ce7')
       drawRing(bandSize * 2, binCount, maxRadius * 0.68, 14, '#ffe8c0')
     }
 

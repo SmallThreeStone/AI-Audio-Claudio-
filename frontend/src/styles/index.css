@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  --color-radio-bg: #0a0a1a;
-  --color-radio-surface: #12122a;
-  --color-radio-card: #1a1a3e;
-  --color-radio-accent: #e94560;
-  --color-radio-accent-dim: #b8304f;
-  --color-radio-gold: #f0c060;
-  --color-radio-text: #e8e8f0;
-  --color-radio-muted: #8888aa;
-  --color-radio-border: #2a2a4a;
+  --color-radio-bg: #060b14;
+  --color-radio-surface: #0d1528;
+  --color-radio-card: #0f1a30;
+  --color-radio-accent: #00e5c0;
+  --color-radio-accent-dim: #00b894;
+  --color-radio-gold: #7c5ce7;
+  --color-radio-text: #e0e8f0;
+  --color-radio-muted: #5a6a8a;
+  --color-radio-border: #1a2a4a;
+  --color-radio-glow: rgba(0, 229, 192, 0.12);
 }
 
 * {
@@ -24,10 +25,38 @@ body {
   color: var(--color-radio-text);
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* Starfield — tiny glowing dots scattered across the background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 25% 30%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.5px 1.5px at 40% 10%, rgba(0,229,192,0.5), transparent),
+    radial-gradient(1px 1px at 55% 45%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 70% 20%, rgba(124,92,231,0.5), transparent),
+    radial-gradient(1px 1px at 85% 35%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 15% 60%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 35% 70%, rgba(0,229,192,0.4), transparent),
+    radial-gradient(1px 1px at 50% 80%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 65% 55%, rgba(124,92,231,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 80% 65%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 90% 75%, rgba(0,229,192,0.3), transparent),
+    radial-gradient(1px 1px at 20% 90%, rgba(255,255,255,0.25), transparent),
+    radial-gradient(1.5px 1.5px at 60% 85%, rgba(124,92,231,0.3), transparent);
+  background-size: 100% 100%;
 }
 
 #root {
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 ::-webkit-scrollbar {

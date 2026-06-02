@@ -13,9 +13,9 @@ export default function AmbientBackground() {
         className="ambient-gradient"
         style={{
           background: `
-            radial-gradient(ellipse at ${50 - bassShift}% 30%, rgba(233, 69, 96, 0.06) 0%, transparent 55%),
-            radial-gradient(ellipse at ${50 + bassShift}% 70%, rgba(240, 192, 96, 0.04) 0%, transparent 50%),
-            radial-gradient(ellipse at 50% 50%, rgba(100, 100, 255, 0.02) 0%, transparent 60%)
+            radial-gradient(ellipse at ${50 - bassShift}% 30%, rgba(0, 229, 192, 0.05) 0%, transparent 55%),
+            radial-gradient(ellipse at ${50 + bassShift}% 70%, rgba(124, 92, 231, 0.04) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 50%, rgba(0, 229, 192, 0.02) 0%, transparent 60%)
           `,
         }}
       />
