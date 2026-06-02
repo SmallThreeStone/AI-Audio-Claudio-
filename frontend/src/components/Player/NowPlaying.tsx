@@ -23,7 +23,7 @@ export default function NowPlaying() {
           在下方用自然语言描述你的心情或场景
         </p>
         <p className="text-[var(--color-radio-muted)] text-xs mt-1 opacity-60">
-          AI DJ 会从你的歌单中选歌，并生成 DJ 串词为你播报
+          深空探测会扫描你的星系，为你打捞匹配的声波
         </p>
       </div>
     )

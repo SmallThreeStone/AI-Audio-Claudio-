@@ -10,7 +10,7 @@ export default function PlayHistory() {
   return (
     <div className="mt-3 space-y-1 max-h-60 overflow-y-auto">
       <h4 className="text-[10px] font-bold text-[var(--color-radio-muted)] uppercase tracking-wider px-1">
-        播放历史 ({songs.length})
+        航行记录 ({songs.length})
       </h4>
       {songs.slice(0, 20).map((item) => (
         <div

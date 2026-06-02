@@ -63,7 +63,7 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
       <div className={hideHeader ? 'pt-1' : 'py-3'}>
         {!hideHeader && (
           <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider mb-2">
-            音乐画像
+            航行日志
           </h3>
         )}
         <div className="h-32 animate-pulse bg-[var(--color-radio-card)]/50 rounded-lg" />
@@ -76,7 +76,7 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
       <div className={hideHeader ? 'pt-1' : 'py-3'}>
         {!hideHeader && (
           <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider mb-2">
-            音乐画像
+            航行日志
           </h3>
         )}
         <div className="text-center py-4">
@@ -94,7 +94,7 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
       <div className={hideHeader ? 'pt-1' : 'py-3'}>
         {!hideHeader && (
           <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider mb-2">
-            音乐画像
+            航行日志
           </h3>
         )}
         <p className="text-xs text-[var(--color-radio-muted)] text-center py-4">
@@ -119,7 +119,7 @@ export default function MusicProfilePanel({ hideHeader }: { hideHeader?: boolean
         <div>
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider">
-              音乐画像
+              航行日志
             </h3>
             <div className="flex items-center gap-2">
               <button onClick={fetchProfile} className="text-[10px] text-[var(--color-radio-accent)]/60 hover:text-[var(--color-radio-accent)]">

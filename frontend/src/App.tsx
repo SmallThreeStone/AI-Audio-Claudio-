@@ -224,7 +224,7 @@ function MainApp() {
                   <svg className={`w-3 h-3 transition-transform ${showPlaylists ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
-                  我的歌单
+                  我的星系
                 </button>
                 {showPlaylists && <PlaylistBrowser hideHeader />}
 
@@ -239,7 +239,7 @@ function MainApp() {
                   <svg className={`w-3 h-3 transition-transform ${showProfile ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
-                  音乐画像
+                  航行日志
                 </button>
                 {showProfile && <MusicProfilePanel hideHeader />}
               </div>

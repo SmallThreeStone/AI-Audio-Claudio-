@@ -112,7 +112,7 @@ export default function ChatInput() {
       {showDemoEntry && (
         <div className="mb-3 p-3 rounded-xl border border-[var(--color-radio-accent)]/30 bg-[var(--color-radio-accent)]/5 text-center">
           <p className="text-xs text-[var(--color-radio-text)] mb-2">
-            你的曲库还是空的。先体验一下 AI DJ 吧
+            你的曲库还是空的。先体验一下 深空探测 吧
           </p>
           <button
             onClick={() => handleSubmit('来一首适合当前心情的歌')}
@@ -166,7 +166,7 @@ export default function ChatInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="描述你的心情或场景，比如「加班写代码到吐了，来点能撑住的」..."
+          placeholder="深空广播...描述你的心情或场景，比如「加班写代码到吐了，来点能撑住的」"
           disabled={isSubmitting || isGenerating}
           className="flex-1 bg-transparent outline-none text-sm placeholder-[var(--color-radio-muted)] disabled:opacity-50"
         />
@@ -192,7 +192,7 @@ export default function ChatInput() {
           onClick={() => handleSubmit(suggestedMood || greeting)}
           className="w-full mt-3 text-xs text-[var(--color-radio-accent)] bg-[var(--color-radio-accent)]/5 border border-[var(--color-radio-accent)]/20 rounded-lg px-3 py-2 hover:bg-[var(--color-radio-accent)]/10 transition-colors text-left"
         >
-          <span className="opacity-60">AI DJ: </span>
+          <span className="opacity-60">深空广播: </span>
           {greeting}
         </button>
       )}

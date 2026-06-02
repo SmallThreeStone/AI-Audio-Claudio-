@@ -43,7 +43,7 @@ export default function RadioPlayer() {
       {isGenerating && (
         <div className="w-full space-y-2">
           <p className="text-center text-xs text-[var(--color-radio-muted)]">
-            {generationMessage || 'AI DJ 正在为你准备...'}
+            {generationMessage || '深空探测扫描中...'}
           </p>
           <div className="flex items-center gap-1 justify-center">
             {STAGES.map((s, i) => (
@@ -89,10 +89,10 @@ export default function RadioPlayer() {
           </span>
           <button
             onClick={stop}
-            title="换台"
+            title="切换频道"
             className="text-[10px] text-[var(--color-radio-muted)] hover:text-[var(--color-radio-gold)] border border-[var(--color-radio-border)]/30 hover:border-[var(--color-radio-gold)]/40 rounded-full px-2 py-0.5 transition-colors"
           >
-            换台 ↻
+            切换频道 ↻
           </button>
         </div>
       )}

@@ -68,9 +68,9 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       if (result.error) {
         setNotice(result.error)
       } else if (result.synced === 0) {
-        setNotice('未发现新歌单，请确认网易云账号中有歌单')
+        setNotice('未发现新星系，请确认网易云账号中有歌单')
       } else {
-        setNotice(`导入成功！${result.synced} 个歌单，${result.new_songs} 首歌曲`)
+        setNotice(`扫描完成！${result.synced} 个星系，${result.new_songs} 个星轨`)
         await loadPlaylists()
       }
     } catch (e) {
@@ -87,14 +87,14 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       {!hideHeader && (
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider">
-            我的歌单
+            我的星系
           </h3>
           <button
             onClick={handleSync}
             disabled={syncing}
             className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)] disabled:opacity-50"
           >
-            {syncing ? '同步中...' : playlists.length === 0 ? '导入歌单' : '刷新'}
+            {syncing ? '扫描中...' : playlists.length === 0 ? '扫描星系' : '扫描'}
           </button>
         </div>
       )}
@@ -121,20 +121,20 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       {playlists.length === 0 && !syncing ? (
         <div className="text-center py-8">
           <p className="text-xs text-[var(--color-radio-muted)] mb-3">
-            还没有导入歌单
+            还未探测到星系
           </p>
           <button
             onClick={handleSync}
             className="px-4 py-2 bg-[var(--color-radio-accent)] text-white text-sm rounded-lg hover:bg-[var(--color-radio-accent-dim)] transition-colors"
           >
-            从网易云导入
+            从网易云扫描
           </button>
         </div>
       ) : (
         <div className="space-y-1">
           {filtered.length === 0 && activeTag !== '全部' ? (
             <p className="text-xs text-[var(--color-radio-muted)] text-center py-4">
-              该分类下暂无歌单
+              该频段下暂无星系
             </p>
           ) : (
             filtered.map((pl) => (
@@ -154,7 +154,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
                 <div className="flex-1 min-w-0">
                   <p className="text-sm truncate">{pl.name}</p>
                   <p className="text-xs text-[var(--color-radio-muted)]">
-                    {pl.song_count} 首{pl.is_liked && ' · 我喜欢的'}
+                    {pl.song_count} 个星轨{pl.is_liked && ' · 已标记'}
                   </p>
                 </div>
               </div>

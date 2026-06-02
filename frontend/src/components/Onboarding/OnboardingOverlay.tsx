@@ -5,19 +5,19 @@ const ONBOARDING_KEY = 'claudio_onboarding_completed'
 const STEPS = [
   {
     title: '登录网易云账号',
-    desc: '扫码或手机登录，导入你的私人歌单',
+    desc: '扫码或手机登录，探测你的私人星系',
     selector: '[data-onboarding="login"]',
     position: 'bottom',
   },
   {
-    title: '导入你的歌单',
-    desc: '同步网易云歌单后，AI DJ 才能为你选歌',
+    title: '扫描你的星系',
+    desc: '同步网易云星系后，深空探测才能为你打捞声波',
     selector: '[data-onboarding="sync"]',
     position: 'left',
   },
   {
-    title: '告诉 DJ 你的心情',
-    desc: '描述你此刻的心情或场景，AI DJ 为你量身选歌',
+    title: '发送你的声波',
+    desc: '描述你此刻的心情或场景，深空探测为你打捞匹配的脉冲信号',
     selector: '[data-onboarding="chat"]',
     position: 'top',
   },

@@ -239,7 +239,7 @@ function QrLogin({
             break
           case 803:
             trackEvent('login_success', { method: 'qr' })
-            setStatusText(result.auto_sync ? '登录成功，正在导入你的歌单...' : '登录成功！')
+            setStatusText(result.auto_sync ? '登录成功，正在扫描你的星系...' : '登录成功！')
             if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
             clearQrInfo()
             setUser({
