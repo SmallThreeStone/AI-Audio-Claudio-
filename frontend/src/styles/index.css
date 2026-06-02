@@ -139,6 +139,7 @@ body::before {
 
 .radio-status-pill,
 .radio-user-pill,
+.radio-time-pill,
 .radio-icon-button,
 .radio-text-button {
   min-height: 36px;
@@ -160,7 +161,18 @@ body::before {
   gap: 8px;
   color: rgba(238, 252, 248, 0.54);
   font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0;
+}
+
+.radio-time-pill {
+  min-width: 58px;
+  justify-content: center;
+  padding: 0 12px;
+  color: rgba(238, 252, 248, 0.78);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .radio-onair div {
@@ -169,6 +181,21 @@ body::before {
   border-radius: 50%;
   background: var(--color-radio-accent);
   box-shadow: 0 0 18px rgba(24, 246, 210, 0.75);
+}
+
+.radio-onair--generating div {
+  background: var(--color-radio-gold);
+  box-shadow: 0 0 18px rgba(226, 173, 88, 0.72);
+  animation: status-breathe 1.25s ease-in-out infinite;
+}
+
+.radio-onair--idle div {
+  background: rgba(238, 252, 248, 0.32);
+  box-shadow: none;
+}
+
+.radio-weather-condition {
+  color: rgba(238, 252, 248, 0.46);
 }
 
 .radio-icon-button {
@@ -310,6 +337,12 @@ body::before {
   font-weight: 800;
 }
 
+.console-panel__header p {
+  margin-top: 8px;
+  color: rgba(238, 252, 248, 0.48);
+  font-size: 12px;
+}
+
 .signal-orb {
   width: 42px;
   height: 42px;
@@ -389,6 +422,7 @@ body::before {
 
   .radio-brand__text span,
   .radio-onair,
+  .radio-weather-condition,
   .radio-status-pill .hidden,
   .radio-user-pill > span,
   .radio-user-pill__logout {
@@ -398,6 +432,12 @@ body::before {
   .radio-status-pill {
     min-height: 34px;
     padding: 0 10px;
+  }
+
+  .radio-time-pill {
+    min-width: 50px;
+    padding: 0 9px;
+    font-size: 12px;
   }
 
   .radio-user-pill {
@@ -424,6 +464,16 @@ body::before {
   .radio-text-button {
     display: none;
   }
+
+  .radio-time-pill {
+    min-width: 46px;
+    padding: 0 7px;
+  }
+}
+
+@keyframes status-breathe {
+  0%, 100% { transform: scale(0.78); opacity: 0.72; }
+  50% { transform: scale(1); opacity: 1; }
 }
 
 ::-webkit-scrollbar {

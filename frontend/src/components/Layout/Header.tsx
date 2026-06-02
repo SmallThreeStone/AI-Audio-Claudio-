@@ -21,17 +21,32 @@ const WEATHER_ICON: Record<string, string> = {
 }
 
 export default function Header() {
-  const { user, isPlaying, session, setUser, setShowTranscript, setShowShortcuts, setShowAdmin, setShowSettings } = useStore()
+  const { user, isPlaying, isGenerating, session, setUser, setShowTranscript, setShowShortcuts, setShowAdmin, setShowSettings } = useStore()
   const [weather, setWeather] = useState<WeatherInfo | null>(null)
+  const [now, setNow] = useState(new Date())
 
   useEffect(() => {
     getWeather().then(setWeather).catch((e) => { console.warn('Weather load failed:', e) })
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const handleLogout = async () => {
     await logout()
     setUser(null)
   }
+
+  const statusLabel = isGenerating ? '生成中' : isPlaying ? '播放中' : session ? '待播放' : '待机'
+  const statusTone = isGenerating ? 'generating' : isPlaying ? 'playing' : session ? 'ready' : 'idle'
+  const timeLabel = now.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  const weatherTitle = weather?.summary || [weather?.city, weather?.condition, weather?.temperature != null ? `${weather.temperature}°` : ''].filter(Boolean).join(' · ')
 
   return (
     <header
@@ -61,18 +76,25 @@ export default function Header() {
 
         <div className="radio-topbar__actions">
           {weather?.available && (
-            <div className="radio-status-pill" title={weather.summary}>
+            <div className="radio-status-pill" title={weatherTitle}>
               <span>{WEATHER_ICON[weather.condition_code || ''] || '🌡'}</span>
               <span className="hidden sm:inline">{weather.city}</span>
+              {weather.condition && (
+                <span className="radio-weather-condition">{weather.condition}</span>
+              )}
               {weather.temperature != null && (
                 <span>{weather.temperature}°</span>
               )}
             </div>
           )}
 
-          <div className="radio-onair">
+          <div className={`radio-onair radio-onair--${statusTone}`}>
             <div />
-            <span>ON AIR</span>
+            <span>{statusLabel}</span>
+          </div>
+
+          <div className="radio-time-pill" title="本地时间">
+            {timeLabel}
           </div>
 
           {session && (

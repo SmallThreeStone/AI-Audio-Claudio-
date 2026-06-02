@@ -218,7 +218,8 @@ function MainApp() {
                 <div className="console-panel__header">
                   <div>
                     <span className="console-kicker">DJ 0430</span>
-                    <h2>iRadio Console</h2>
+                    <h2>iRadio 控制台</h2>
+                    <p>把此刻心情翻译成一段电台</p>
                   </div>
                   <div className="signal-orb" />
                 </div>
@@ -234,18 +235,17 @@ function MainApp() {
                     data-onboarding="sync"
                     className={showPlaylists ? 'active' : ''}
                   >
-                    我的星系
+                    歌单库
                   </button>
                   <button
                     onClick={() => setShowProfile(!showProfile)}
                     className={showProfile ? 'active' : ''}
                   >
-                    航行日志
+                    听歌画像
                   </button>
                 </div>
                 {showPlaylists && <PlaylistBrowser hideHeader />}
 
-                {/* Queue — always visible, the main focus */}
                 <QueuePanel compact />
                 {showProfile && <MusicProfilePanel hideHeader />}
               </div>
