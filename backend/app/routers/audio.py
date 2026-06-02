@@ -10,7 +10,8 @@ from ..database import get_session
 from ..config import TTS_CACHE_DIR
 from ..services.audio_proxy import get_song_url
 from ..services.netease_client import netease
-from ..models import Song, User
+from ..models import Song, User, Playlist
+from ..models.playlist_song import playlist_song_table
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,9 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
             if u:
                 user_id = u.id
     url = await _get_active_queue_stream_url(session, song_id, user_id) if user_id else None
+    if not url and user_id and not await _song_in_user_library(session, song_id, user_id):
+        logger.warning("[Audio] Song not in user's library: song_id=%d user_id=%s", song_id, user_id)
+        raise HTTPException(status_code=404, detail="Song not found in user library")
     if not url:
         url = await get_song_url(session, song_id, user_id)
     if not url:
@@ -150,6 +154,19 @@ async def _get_active_queue_stream_url(session: AsyncSession, song_id: int, user
     return url
 
 
+async def _song_in_user_library(session: AsyncSession, song_id: int, user_id: int) -> bool:
+    result = await session.execute(
+        select(playlist_song_table.c.song_id)
+        .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+        .where(
+            Playlist.user_id == user_id,
+            playlist_song_table.c.song_id == song_id,
+        )
+        .limit(1)
+    )
+    return result.scalar() is not None
+
+
 async def _mark_active_queue_song_error(session: AsyncSession, song_id: int, user_id: int, reason: str):
     from ..models.dj_session import DJSession
     from ..models.queue_item import QueueItem
@@ -186,6 +203,9 @@ async def get_lyrics(song_id: int, request: Request, session: AsyncSession = Dep
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     # Look up the song to get its netease_song_id
+    if not await _song_in_user_library(session, song_id, user_id):
+        raise HTTPException(status_code=404, detail="Song not found in user library")
+
     result = await session.execute(select(Song).where(Song.id == song_id))
     song = result.scalar()
     if not song:
