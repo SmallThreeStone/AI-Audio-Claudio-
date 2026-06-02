@@ -68,6 +68,27 @@ cd frontend && npm run dev
 - 不加不可能触发的错误处理、fallback 或验证
 - TypeScript 编译零错误才能提交
 
+### 提交前置自测（强制执行）
+
+**每次代码修改后必须本地自测通过才能 `git commit` + `git push`，跨会话强制执行。**
+
+1. 确保 TypeScript / Python 编译零错误
+2. 启动本地服务（backend + frontend + sidecar）
+3. 至少验证：`/api/health` 200、TTS 端点 200、音乐端点 200
+4. 涉及播放逻辑变更（useRadioPlayer / useAudioVisualizer / audio.py 等），必须浏览器实测：
+   - 生成电台 → TTS intro 有声音 → 第一首歌有声音 → 进度条走动
+   - 切歌 → 旧歌立即停止 → 新 TTS 播放 → 下一首歌有声音
+   - 无声音重叠、无进度条跳变、无自动跳过
+5. 无法自测时必须明确告知用户并给出最小测试步骤
+
+### 云服务器部署规范
+
+- **只能通过 git 拉取代码**：`cd /data/claudio && git pull`，禁止 SFTP/SCP 上传单个文件
+- **只能通过 Docker Compose 启动**：`docker compose up -d --build`，禁止在容器外运行任何项目进程
+- 部署流程：本地 commit + push → SSH 到服务器 → `git pull` → `docker compose down && docker compose up -d --build`
+- **Docker 架构：单容器**。frontend 是静态文件、backend + sidecar 紧耦合必须同主机 localhost 通信，拆多容器只增加复杂度无收益
+- **不按版本区分镜像**：每次 build 覆盖 `claudio-claudio-fm:latest`，不搞版本 tag，避免镜像堆积
+
 ### 任务执行
 
 - 多步骤任务使用 TaskCreate/TaskUpdate 追踪进度
