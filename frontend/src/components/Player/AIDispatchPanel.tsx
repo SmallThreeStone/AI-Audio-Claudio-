@@ -38,6 +38,7 @@ export default function AIDispatchPanel({
 }) {
   const [expanded, setExpanded] = useState(false)
   const intent = session?.ai_intent
+  const meta = intent?.candidate_meta
   const songCount = queue.filter((item) => item.item_type === 'song').length
   const ttsCount = queue.filter((item) => item.item_type.startsWith('tts')).length
   const readySongs = queue.filter((item) => item.item_type === 'song' && item.status === 'ready').length
@@ -53,6 +54,9 @@ export default function AIDispatchPanel({
   const headline = artists.length
     ? `${artists.join(' / ')} · ${intent?.match_count || 0} 首命中${(intent?.fallback_count || 0) > 0 ? ` · ${intent?.fallback_count} 首补齐` : ''}`
     : strategy
+  const sourceText = meta?.library_total
+    ? `全量 ${meta.library_total} 首 → 候选 ${meta.candidate_count || 0} 首`
+    : '全量曲库召回'
   const playbackCue = failedSongs > 0
     ? `有 ${failedSongs} 首歌播放链接暂不可用，系统会自动重试或跳过。`
     : deferredSongs > 0
@@ -71,6 +75,7 @@ export default function AIDispatchPanel({
         </div>
         <div className="ai-dispatch__summary-stats">
           <em>{stage}</em>
+          <em>{sourceText}</em>
           <em>{verifiedSongs}/{songCount || 0} 可播</em>
           <em>{confidenceLabel(intent?.confidence)}</em>
         </div>
@@ -104,7 +109,23 @@ export default function AIDispatchPanel({
               <span>播放链接</span>
               <strong>{verifiedSongs} 已验证{deferredSongs > 0 ? ` · ${deferredSongs} 待取` : ''}</strong>
             </div>
+            <div>
+              <span>避重策略</span>
+              <strong>{meta?.recently_avoided ? `最近 ${meta.recently_avoided} 首降权` : '自动避开近期播放'}</strong>
+            </div>
+            <div>
+              <span>歌单信号</span>
+              <strong>{meta?.playlist_signal_count ? `${meta.playlist_signal_count} 个歌单参与` : '歌单名/描述参与召回'}</strong>
+            </div>
           </div>
+
+          {meta?.selected_playlist_names?.length ? (
+            <div className="ai-dispatch__artist">
+              <span>优先参考歌单</span>
+              <strong>{meta.selected_playlist_names.join(' / ')}</strong>
+              <em>{meta.strict_artist ? '艺人锁定' : '语义召回'}</em>
+            </div>
+          ) : null}
 
           {artists.length > 0 && (
             <div className="ai-dispatch__artist">

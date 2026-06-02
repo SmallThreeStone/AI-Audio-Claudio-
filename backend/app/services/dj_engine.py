@@ -110,12 +110,22 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
     artist_names: list[str] = []
+    candidate_meta = {
+        "library_total": len(demo_songs or []),
+        "playable_total": len(demo_songs or []),
+        "candidate_count": len(demo_songs or []),
+        "tagged_candidates": 0,
+        "recently_avoided": 0,
+        "playlist_signal_count": 0,
+        "strict_artist": False,
+        "selected_playlist_names": [],
+    }
     if demo_songs:
         songs = demo_songs
         library_summary = f"体验模式 · 示例曲库: {len(demo_songs)} 首歌曲，{len(set(s['artist'] for s in demo_songs))} 位艺人"
         behavioral_profile = "（体验模式 — 登录后获得个性化推荐）"
     else:
-        songs, artist_names = await _get_song_candidates(db, user_request=user_request, user_id=user_id)
+        songs, artist_names, candidate_meta = await _get_song_candidates(db, user_request=user_request, user_id=user_id)
         library_summary = await _build_library_summary(db, user_id)
         behavioral_profile = await _build_behavioral_profile(db, user_id)
     artist_matched_ids = _artist_matched_ids(songs, artist_names)
@@ -131,7 +141,10 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 
     artist_block = ""
     if artist_names:
-        artist_block = f"\n【艺人匹配】听众指定了艺人: {', '.join(artist_names)}。候选歌曲列表中带 ★艺人匹配 标记的就是这些艺人的歌（共 {len(artist_matched_ids)} 首）。如果匹配歌曲少于 6 首，请先选完这些匹配歌曲，再用相近风格补齐，并在串词里坦诚说明“曲库里的该艺人歌曲不多，已补充相近风格”。\n"
+        if candidate_meta.get("strict_artist"):
+            artist_block = f"\n【严格艺人匹配】听众指定只听: {', '.join(artist_names)}。候选歌曲中带 ★艺人匹配 的就是这些艺人的歌（共 {len(artist_matched_ids)} 首）。不要选择其他艺人；如果数量不足 6 首，直接少排几首，并在串词里说明“你的歌单里该艺人可播放歌曲不多”。\n"
+        else:
+            artist_block = f"\n【艺人匹配】听众指定了艺人: {', '.join(artist_names)}。候选歌曲列表中带 ★艺人匹配 标记的就是这些艺人的歌（共 {len(artist_matched_ids)} 首）。如果匹配歌曲少于 6 首，请先选完这些匹配歌曲，再用相近风格补齐，并在串词里坦诚说明“曲库里的该艺人歌曲不多，已补充相近风格”。\n"
 
     user_prompt = f"""听众说："{user_request}"{weather_block}{calendar_block}{artist_block}
 
@@ -144,6 +157,9 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 【听众听歌画像】
 {behavioral_profile}
 
+【AI 调度说明】
+本次已从用户全量歌单中预筛候选：曲库 {candidate_meta.get("library_total", 0)} 首，可播放 {candidate_meta.get("playable_total", 0)} 首，给你精排 {candidate_meta.get("candidate_count", len(songs))} 首。最近播放过的歌已降权；歌单名和歌单描述也参与了匹配。
+
 【候选曲目（{len(songs)} 首）】
 {song_text}
 
@@ -152,11 +168,11 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     try:
         text = await _call_deepseek(client, p["system_prompt"], user_prompt)
         script = _enforce_artist_selection(_parse_json_response(text), songs, artist_names)
-        return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids)
+        return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids, candidate_meta)
     except Exception as e:
         logger.warning("DeepSeek API failed, using fallback: %s", e)
         script = _enforce_artist_selection(_fallback_script(songs, user_request, persona, weather_info, artist_names=artist_names), songs, artist_names)
-        return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids)
+        return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids, candidate_meta)
 
 
 async def _call_deepseek(client: AsyncOpenAI, system_prompt: str, user_prompt: str, retries: int = 2, max_tokens: int = 4096) -> str:
@@ -224,7 +240,7 @@ async def generate_adjustment(db: AsyncSession, original_request: str, new_mood:
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
-    songs, _ = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
+    songs, _, _ = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
     song_text = _format_song_list(songs)
 
     system_prompt = f"""{p['system_prompt']}
@@ -272,7 +288,7 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
-    songs, _ = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
+    songs, _, _ = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
 
     recently = []
     for sid in recently_played_ids:
@@ -315,6 +331,7 @@ def _user_library_query(user_id: int | None):
 
 async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 140, exclude_ids: list[int] | None = None, user_id: int | None = None):
     mood_keywords = _extract_mood_keywords(user_request)
+    strict_artist = _is_strict_artist_request(user_request)
 
     library_query = _user_library_query(user_id)
     if exclude_ids:
@@ -324,6 +341,7 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
     artist_names = _extract_artist_names(user_request, all_library_songs)
     recent_song_ids = await _recent_song_ids(db, user_id)
     playlist_context = await _song_playlist_context(db, user_id)
+    playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords)
     excluded = set(exclude_ids or [])
 
     query = (
@@ -342,14 +360,14 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         artist_matches = [s for s in all_candidates if s.id in artist_match_ids]
         other_songs = [s for s in all_candidates if s.id not in artist_match_ids]
         artist_matches = _rank_song_candidates(artist_matches, user_request, mood_keywords, recent_song_ids, playlist_context)
-        other_songs = _select_diverse_candidates(other_songs, user_request, mood_keywords, recent_song_ids, playlist_context, max(0, limit - len(artist_matches[:limit])))
+        other_songs = [] if strict_artist else _select_diverse_candidates(other_songs, user_request, mood_keywords, recent_song_ids, playlist_context, max(0, limit - len(artist_matches[:limit])))
         songs = artist_matches[:limit]
         if len(songs) < limit:
             songs.extend(other_songs[:limit - len(songs)])
     else:
         songs = _select_diverse_candidates(all_candidates, user_request, mood_keywords, recent_song_ids, playlist_context, limit)
 
-    if len(songs) < limit:
+    if len(songs) < limit and not (artist_names and strict_artist):
         existing_ids = {s.id for s in songs}
         existing_ids.update(excluded)
         extra_query = (
@@ -363,16 +381,27 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         extra = (await db.execute(extra_query)).scalars().all()
         songs.extend(_select_diverse_candidates(extra, user_request, mood_keywords, recent_song_ids, playlist_context, limit - len(songs)))
 
+    candidate_meta = {
+        "library_total": len(all_library_songs),
+        "playable_total": len(all_candidates),
+        "candidate_count": len(songs),
+        "tagged_candidates": len([s for s in songs if s.mood_tags]),
+        "recently_avoided": len(recent_song_ids),
+        "playlist_signal_count": len(playlist_names),
+        "strict_artist": bool(artist_names and strict_artist),
+        "selected_playlist_names": playlist_names[:3],
+    }
+
     logger.info(
         "[DJ] candidates user_id=%s library=%s playable=%s selected=%s tagged_selected=%s request=%s",
         user_id,
-        len(all_library_songs),
-        len(all_candidates),
-        len(songs),
-        len([s for s in songs if s.mood_tags]),
+        candidate_meta["library_total"],
+        candidate_meta["playable_total"],
+        candidate_meta["candidate_count"],
+        candidate_meta["tagged_candidates"],
         user_request[:40],
     )
-    return songs, artist_names
+    return songs, artist_names, candidate_meta
 
 
 async def _recent_song_ids(db: AsyncSession, user_id: int | None, limit: int = 80) -> set[int]:
@@ -405,6 +434,24 @@ async def _song_playlist_context(db: AsyncSession, user_id: int | None) -> dict[
         parts = [name or "", desc or ""]
         context.setdefault(song_id, []).append(" ".join(p for p in parts if p))
     return {song_id: " ".join(parts) for song_id, parts in context.items()}
+
+
+async def _matching_playlist_names(db: AsyncSession, user_id: int | None, user_request: str, mood_keywords: list[str]) -> list[str]:
+    if user_id is None:
+        return []
+    terms = set(_request_terms(user_request)) | set(mood_keywords)
+    if not terms:
+        return []
+    result = await db.execute(
+        select(Playlist.name, Playlist.description)
+        .where(Playlist.user_id == user_id)
+    )
+    matches = []
+    for name, desc in result.all():
+        text = f"{name or ''} {desc or ''}".lower()
+        if any(term.lower() in text for term in terms):
+            matches.append(name or "未命名歌单")
+    return matches[:5]
 
 
 def _select_diverse_candidates(songs: list, user_request: str, mood_keywords: list[str], recent_song_ids: set[int], playlist_context: dict[int, str], limit: int) -> list:
@@ -485,6 +532,11 @@ def _request_terms(user_request: str) -> list[str]:
         if token not in stop_words and len(token) >= 2:
             terms.add(token)
     return list(terms)
+
+
+def _is_strict_artist_request(user_request: str) -> bool:
+    strict_words = ["只听", "只想听", "不要其他", "不想听其他", "别放其他", "只放", "就听", "锁定艺人"]
+    return any(word in user_request for word in strict_words)
 
 
 def _extract_mood_keywords(user_request: str) -> list[str]:
@@ -595,7 +647,8 @@ def _enforce_artist_selection(script: dict, songs: list, artist_names: list[str]
     return script
 
 
-def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], artist_matched_ids: set[int]) -> dict:
+def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], artist_matched_ids: set[int], candidate_meta: dict | None = None) -> dict:
+    candidate_meta = candidate_meta or {}
     if not artist_names:
         script["ai_intent"] = {
             "raw_request": user_request,
@@ -606,6 +659,7 @@ def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], 
             "strategy": "心情画像优先",
             "signals": _intent_signals(user_request, []),
             "confidence": "medium",
+            "candidate_meta": candidate_meta,
             "message": "AI 将根据你的心情和听歌画像选歌。",
         }
         return script
@@ -616,8 +670,13 @@ def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], 
     ]
     artist_match_count = len(artist_matched_ids)
     selected_artist_count = len([song_id for song_id in selected_song_ids if song_id in artist_matched_ids])
-    fallback_count = max(0, len(selected_song_ids) - selected_artist_count)
-    if artist_match_count >= 6:
+    fallback_count = 0 if candidate_meta.get("strict_artist") else max(0, len(selected_song_ids) - selected_artist_count)
+    if candidate_meta.get("strict_artist") and artist_match_count > 0:
+        coverage = "enough" if artist_match_count >= 6 else "partial"
+        confidence = "high" if artist_match_count >= 3 else "medium"
+        strategy = "严格艺人锁定"
+        message = f"已按你的要求锁定「{'、'.join(artist_names)}」，只从该艺人的可播放歌曲中编排。"
+    elif artist_match_count >= 6:
         coverage = "enough"
         confidence = "high"
         strategy = "艺人优先"
@@ -642,6 +701,7 @@ def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], 
         "strategy": strategy,
         "signals": _intent_signals(user_request, artist_names),
         "confidence": confidence,
+        "candidate_meta": candidate_meta,
         "message": message,
     }
     return script

@@ -63,6 +63,16 @@ export interface AIIntent {
   strategy?: string
   signals?: string[]
   confidence?: 'low' | 'medium' | 'high'
+  candidate_meta?: {
+    library_total?: number
+    playable_total?: number
+    candidate_count?: number
+    tagged_candidates?: number
+    recently_avoided?: number
+    playlist_signal_count?: number
+    strict_artist?: boolean
+    selected_playlist_names?: string[]
+  }
   message: string
 }
 

@@ -633,7 +633,7 @@
 
 .ai-dispatch__grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 7px;
 }
 
@@ -1073,6 +1073,12 @@
   border-radius: 8px;
   background: rgba(3, 8, 8, 0.34);
   border: 1px solid rgba(238, 252, 248, 0.05);
+}
+
+.library-health__advice {
+  color: rgba(24, 246, 210, 0.62);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .playlist-library__stats div {

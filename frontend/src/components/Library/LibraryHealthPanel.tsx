@@ -26,6 +26,11 @@ export default function LibraryHealthPanel({
   const playablePct = pct(playableSongs, totalSongs)
   const taggedPct = pct(taggedSongs, totalSongs)
   const health = Math.round((playablePct * 0.55) + (Math.min(100, artistCount * 5) * 0.2) + (taggedPct * 0.25))
+  const advice = totalSongs
+    ? taggedPct < 20
+      ? '已启用全量歌单召回；补充情绪标签可继续提升精度'
+      : '全量歌单和情绪标签都会参与 AI 调度'
+    : '同步歌单后才能建立 AI 素材库'
 
   return (
     <div className={`library-health ${compact ? 'library-health--compact' : ''}`}>
@@ -55,6 +60,7 @@ export default function LibraryHealthPanel({
           <span>情绪标签</span>
         </div>
       </div>
+      <p className="library-health__advice">{advice}</p>
     </div>
   )
 }
