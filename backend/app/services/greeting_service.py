@@ -116,6 +116,9 @@ async def build_greeting(db: AsyncSession, weather_summary: str | None = None, u
             unique_prompts.append(p)
     unique_prompts = unique_prompts[:5]
 
+    # Try AI-generated prompts for richer suggestions (non-blocking, 1.5s timeout)
+    ai_prompts = await _generate_ai_prompts(greeting_text, suggested_mood, artists[:3], top_genre)
+
     return {
         "greeting_text": greeting_text,
         "suggested_mood": suggested_mood,
@@ -124,4 +127,54 @@ async def build_greeting(db: AsyncSession, weather_summary: str | None = None, u
         "recent_artists": artists[:5],
         "top_genre": top_genre,
         "personalized_prompts": unique_prompts,
+        "ai_prompts": ai_prompts,
     }
+
+
+async def _generate_ai_prompts(greeting: str, mood: str, artists: list[str], genre: str) -> list[str]:
+    """Generate natural-language quick prompts via DeepSeek. Returns empty list on failure."""
+    import asyncio
+    from openai import AsyncOpenAI
+    from ..config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL
+
+    if not DEEPSEEK_API_KEY:
+        return []
+
+    context_parts = [f"当前场景: {greeting}"]
+    if artists:
+        context_parts.append(f"用户最近在听: {'、'.join(artists)}")
+    if genre:
+        context_parts.append(f"偏好风格: {genre}")
+    if mood:
+        context_parts.append(f"推荐情绪: {mood}")
+
+    prompt = f"""你是 AI 电台 DJ。根据以下上下文，生成 3 条个性化的音乐点播建议。每条 8-15 个字，像用户自己会说的话，不要重复模板。
+
+{chr(10).join(context_parts)}
+
+返回 JSON 格式: {{"prompts": ["建议1", "建议2", "建议3"]}}
+只返回 JSON，不要其他文字。"""
+
+    try:
+        client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=5.0)
+        resp = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.9,
+            ),
+            timeout=3.0,
+        )
+        text = resp.choices[0].message.content
+        if text:
+            import json
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                data = json.loads(text[start:end])
+                return data.get("prompts", [])[:3]
+    except Exception:
+        pass
+
+    return []

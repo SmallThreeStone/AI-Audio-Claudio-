@@ -111,7 +111,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
         library_summary = f"体验模式 · 示例曲库: {len(demo_songs)} 首歌曲，{len(set(s['artist'] for s in demo_songs))} 位艺人"
         behavioral_profile = "（体验模式 — 登录后获得个性化推荐）"
     else:
-        songs = await _get_song_candidates(db)
+        songs = await _get_song_candidates(db, user_request=user_request)
         library_summary = await _build_library_summary(db)
         behavioral_profile = await _build_behavioral_profile(db, user_id)
     song_text = _format_song_list(songs)
@@ -289,24 +289,43 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     return _parse_json_response(text)
 
 
-async def _get_song_candidates(db: AsyncSession, limit: int = 80, exclude_ids: list[int] | None = None) -> list[Song]:
-    """Get songs for AI to choose from. Exclude songs known to be unplayable (copyright/DMCA)."""
+async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 80, exclude_ids: list[int] | None = None) -> list[Song]:
+    """Get songs for AI to choose from. Pre-filters by mood keywords in user_request
+    so that different moods get different candidate pools."""
+    # Extract keywords from user request for filtering
+    mood_keywords = _extract_mood_keywords(user_request)
+
     query = (
         select(Song)
         .where(
             Song.mood_tags != None,
             or_(Song.has_playable_url == True, Song.last_url_fetch == None),
         )
-        .order_by(Song.popularity.desc().nullslast())
     )
     if exclude_ids:
         query = query.where(Song.id.notin_(exclude_ids))
 
-    result = await db.execute(query.limit(limit))
-    songs = result.scalars().all()
+    all_candidates = (await db.execute(query)).scalars().all()
+
+    if mood_keywords:
+        # Score songs by keyword match in mood_tags + genre
+        scored = []
+        for s in all_candidates:
+            score = 0
+            mood_text = (s.mood_tags or "") + " " + (s.genre or "")
+            for kw in mood_keywords:
+                if kw in mood_text:
+                    score += 1
+            scored.append((score, s))
+        # Sort: matching songs first (by score desc + popularity desc), then rest by popularity
+        scored.sort(key=lambda x: (-x[0], -(x[1].popularity or 0)))
+        songs = [s for (_, s) in scored[:limit]]
+    else:
+        # No keywords: sort by popularity
+        all_candidates.sort(key=lambda s: -(s.popularity or 0))
+        songs = all_candidates[:limit]
 
     if len(songs) < limit:
-        remaining = limit - len(songs)
         existing_ids = {s.id for s in songs}
         if exclude_ids:
             existing_ids.update(exclude_ids)
@@ -316,13 +335,30 @@ async def _get_song_candidates(db: AsyncSession, limit: int = 80, exclude_ids: l
                 Song.id.notin_(existing_ids),
                 or_(Song.has_playable_url == True, Song.last_url_fetch == None),
             )
-            .limit(remaining)
+            .limit(limit - len(songs))
         )
         extra = (await db.execute(extra_query)).scalars().all()
         songs.extend(extra)
 
     random.shuffle(songs)
     return songs
+
+
+def _extract_mood_keywords(user_request: str) -> list[str]:
+    """Extract mood/style keywords from user's natural language request.
+    Matches against known mood tags and genre names in Chinese."""
+    KNOWN_KEYWORDS = [
+        "摇滚", "流行", "电子", "古典", "爵士", "民谣", "说唱", "嘻哈", "R&B", "蓝调", "金属", "朋克", "雷鬼",
+        "轻松", "温暖", "治愈", "安静", "钢琴", "轻快", "元气", "慵懒", "沙发", "氛围", "迷幻", "深沉", "有力",
+        "清新", "温柔", "浪漫", "伤感", "快乐", "活力", "运动", "专注", "睡眠", "瑜伽", "咖啡", "旅行", "开车",
+        "舞曲", "电音", "后摇", "独立", "另类", "世界音乐", "原声", "电影原声", "古风", "国风", "纯音乐", "轻音乐",
+        "节奏", "慢摇", "快节奏", "慢节奏", "激情", "平静", "减压", "放松", "兴奋", "忧郁", "思念", "怀旧",
+    ]
+    keywords = []
+    for kw in KNOWN_KEYWORDS:
+        if kw in user_request:
+            keywords.append(kw)
+    return keywords
 
 
 async def _build_library_summary(db: AsyncSession) -> str:
@@ -498,6 +534,29 @@ async def _build_behavioral_profile(db: AsyncSession, user_id: int | None = None
         if skip_lines:
             lines.append("容易跳过的艺人(慎重推): " + ", ".join(skip_lines))
 
+    # Liked / disliked songs (user explicit feedback)
+    liked_artists_result = await db.execute(
+        select(Song.artist, func.sum(Song.like_count))
+        .where(Song.like_count > 0, Song.artist != None)
+        .group_by(Song.artist)
+        .order_by(func.sum(Song.like_count).desc())
+        .limit(5)
+    )
+    liked = [(a, c) for a, c in liked_artists_result.all() if c]
+    if liked:
+        lines.append("用户点赞的艺人(优先推荐): " + ", ".join(f"{a}({c}赞)" for a, c in liked))
+
+    disliked_artists_result = await db.execute(
+        select(Song.artist, func.sum(Song.dislike_count))
+        .where(Song.dislike_count > 0, Song.artist != None)
+        .group_by(Song.artist)
+        .order_by(func.sum(Song.dislike_count).desc())
+        .limit(3)
+    )
+    disliked = [(a, c) for a, c in disliked_artists_result.all() if c]
+    if disliked:
+        lines.append("用户不喜欢的艺人(避免推荐): " + ", ".join(f"{a}({c}踩)" for a, c in disliked))
+
     # Recently played (avoid repeats)
     if recent_songs:
         recent_lines = [f"{name} - {artist}" for name, artist in recent_songs[:5]]
@@ -515,18 +574,24 @@ async def _build_behavioral_profile(db: AsyncSession, user_id: int | None = None
 
 
 def _format_song_list(songs) -> str:
-    """Format songs for AI prompt."""
+    """Format songs for AI prompt — includes genre and bpm for better matching."""
     lines = []
     for i, s in enumerate(songs):
         if isinstance(s, dict):
             lines.append(f"[id:{i+1}] {s['name']} - {s['artist']} | 专辑:{s.get('album', '?')}")
         else:
             tags = s.mood_tags or ""
+            genre = s.genre or ""
+            bpm = f"bpm:{s.bpm}" if s.bpm else ""
             dur = f"{s.duration_ms // 60000}:{(s.duration_ms % 60000) // 1000:02d}" if s.duration_ms else "?"
-            lines.append(
-                f"[id:{s.id}] {s.name} - {s.artist} | 专辑:{s.album or '?'} | "
-                f"心情:{tags} | 时长:{dur}"
-            )
+            parts = [
+                f"[id:{s.id}] {s.name} - {s.artist}",
+                f"风格:{genre}" if genre else "",
+                f"心情:{tags}" if tags else "",
+                bpm,
+                f"时长:{dur}",
+            ]
+            lines.append(" | ".join(p for p in parts if p))
     return "\n".join(lines)
 
 

@@ -33,7 +33,9 @@ export default function ChatInput() {
       .then((g) => {
         setGreeting(g.greeting_text)
         setSuggestedMood(g.suggested_mood)
-        if (g.personalized_prompts?.length) setPersonalizedPrompts(g.personalized_prompts)
+        // Prefer AI-generated prompts over template ones
+        if (g.ai_prompts?.length) setPersonalizedPrompts(g.ai_prompts)
+        else if (g.personalized_prompts?.length) setPersonalizedPrompts(g.personalized_prompts)
       })
       .catch((e) => { console.warn('Greeting fetch failed:', e) })
     getDemoStatus()

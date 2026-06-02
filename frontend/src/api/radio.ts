@@ -85,6 +85,7 @@ export async function getGreeting() {
     recent_artists: string[]
     top_genre: string
     personalized_prompts: string[]
+    ai_prompts?: string[]
   }
 }
 
