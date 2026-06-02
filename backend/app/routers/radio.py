@@ -5,7 +5,7 @@ import ast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, Integer, case
+from sqlalchemy import select, func, Integer, case, or_
 from pydantic import BaseModel
 
 from ..config import DEMO_MODE
@@ -765,6 +765,27 @@ async def music_profile(request: Request, session: AsyncSession = Depends(get_se
     total_result = await session.execute(_user_song_count_query(user_id))
     total_songs = total_result.scalar() or 0
 
+    artist_count_result = await session.execute(
+        _user_song_query(user_id)
+        .with_only_columns(func.count(func.distinct(Song.artist)))
+        .where(Song.artist != None)
+    )
+    artist_count = artist_count_result.scalar() or 0
+
+    tagged_result = await session.execute(
+        _user_song_query(user_id)
+        .with_only_columns(func.count(func.distinct(Song.id)))
+        .where(Song.mood_tags != None)
+    )
+    tagged_songs = tagged_result.scalar() or 0
+
+    playable_result = await session.execute(
+        _user_song_query(user_id)
+        .with_only_columns(func.count(func.distinct(Song.id)))
+        .where(or_(Song.has_playable_url == True, Song.last_url_fetch == None))
+    )
+    playable_songs = playable_result.scalar() or 0
+
     liked_result = await session.execute(
         _user_song_query(user_id)
         .with_only_columns(func.sum(Song.like_count))
@@ -883,6 +904,9 @@ async def music_profile(request: Request, session: AsyncSession = Depends(get_se
 
     return {
         "total_songs": total_songs,
+        "playable_songs": playable_songs,
+        "tagged_songs": tagged_songs,
+        "artist_count": artist_count,
         "total_likes": total_likes,
         "total_listens": total_listens,
         "genres": genres,
@@ -967,6 +991,15 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
     detected_artists = ai_intent.get("detected_artists", []) if ai_intent else []
     enriched = []
     for qi in items:
+        availability = None
+        if qi.item_type == "song":
+            if qi.stream_url:
+                availability = "verified"
+            elif qi.status in ("error", "skipped"):
+                availability = "failed"
+            else:
+                availability = "deferred"
+
         entry = {
             "id": qi.id,
             "session_id": qi.session_id,
@@ -980,6 +1013,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
             "status": qi.status,
             "error_message": qi.error_message,
             "user_feedback": qi.user_feedback,
+            "availability": availability,
         }
 
         if qi.song_id:

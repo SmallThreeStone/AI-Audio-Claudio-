@@ -3,6 +3,13 @@ import type { QueueItem as QueueItemType } from '../../types'
 export default function QueueItem({ item, isCurrent, compact }: { item: QueueItemType; isCurrent: boolean; compact?: boolean }) {
   const isTTS = item.item_type.startsWith('tts')
   const isError = item.status === 'error'
+  const ttsLabel = item.item_type === 'tts_intro' ? '开场报幕' : item.item_type === 'tts_outro' ? '收尾' : '过渡串词'
+  const issueLabel = item.error_message?.includes('howler') ? '播放失败，已准备重试' : item.error_message || '播放链接暂不可用'
+  const readyLabel = item.item_type === 'song' && item.availability === 'verified'
+    ? '可播'
+    : item.item_type === 'song' && item.availability === 'deferred'
+      ? '待取链'
+      : '就绪'
 
   return (
     <div
@@ -36,7 +43,7 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
       <div className="flex-1 min-w-0">
         <p className="queue-item__title">
           {isTTS ? (
-            <span className="italic">DJ {(item.tts_text || item.intro_text || '').slice(0, 40)}...</span>
+            <span className="italic">DJ {ttsLabel}</span>
           ) : (
             <>
               <span className="font-medium">{item.song_name || '未知'}</span>
@@ -44,6 +51,9 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
             </>
           )}
         </p>
+        {isTTS && (
+          <p className="queue-item__subline">{(item.tts_text || item.intro_text || '').slice(0, compact ? 34 : 52)}...</p>
+        )}
         {!isTTS && item.reason_tags?.length ? (
           <div className="queue-item__tags">
             {item.reason_tags.slice(0, 2).map((tag) => (
@@ -56,8 +66,8 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
       {/* Status */}
       <div className="flex-shrink-0">
         {isError ? (
-          <span className="text-xs text-red-400" title={item.error_message || '无法获取播放链接'}>
-            版权受限
+          <span className="queue-item__status queue-item__status--error" title={issueLabel}>
+            待重试
           </span>
         ) : item.user_feedback === 'liked' ? (
           <svg className="w-3.5 h-3.5 text-green-400" fill="currentColor" viewBox="0 0 24 24">
@@ -74,7 +84,9 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
             <div className="bar" />
           </div>
         ) : item.status === 'ready' ? (
-          <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+          <span className={`queue-item__status ${item.availability === 'deferred' ? 'queue-item__status--pending-url' : ''}`}>
+            {readyLabel}
+          </span>
         ) : item.status === 'tts_generating' || item.status === 'pending' ? (
           <div className="w-3 h-3 border border-[var(--color-radio-muted)] border-t-transparent rounded-full animate-spin" />
         ) : (

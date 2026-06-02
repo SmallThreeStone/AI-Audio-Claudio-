@@ -4,6 +4,8 @@ import { useStore } from '../store'
 import { getQueue } from '../api/radio'
 import type { QueueItem, DJSession } from '../types'
 
+let playbackErrorStreak = 0
+
 export function useWebSocket() {
   const { user, setQueue, setSession, setIsGenerating, setCurrentItem, setCurrentIndex, setGenerationProgress, setIsRestoring, setNotice } = useStore()
 
@@ -88,13 +90,21 @@ export function useWebSocket() {
     })
 
     const unsub3 = radioWS.on('progress', () => {
-      // Progress updates for sync display
+      playbackErrorStreak = 0
     })
 
     const unsub4 = radioWS.on('error', (msg) => {
       console.warn('[WS] Error:', msg.message, 'queue_item_id:', msg.queue_item_id)
-      const errMsg = msg.message || '歌曲加载失败'
-      setNotice(`${errMsg}，即将播放下一首`)
+      const raw = String(msg.message || '')
+      const errMsg = raw.includes('howler') || raw.includes('Song URL')
+        ? '这首歌暂时拿不到播放链接'
+        : raw || '歌曲加载失败'
+      playbackErrorStreak += 1
+      if (playbackErrorStreak >= 3) {
+        setNotice('连续多首歌曲无法播放，网易云登录可能已过期，建议重新登录或刷新歌单')
+      } else {
+        setNotice(`${errMsg}，已自动切到下一项`)
+      }
     })
 
     const unsub5 = radioWS.on('generation_progress', (msg) => {

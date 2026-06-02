@@ -51,6 +51,7 @@ export interface QueueItem {
   error_message?: string
   user_feedback?: 'liked' | 'disliked'
   reason_tags?: string[]
+  availability?: 'verified' | 'deferred' | 'failed' | null
 }
 
 export interface AIIntent {
@@ -59,6 +60,9 @@ export interface AIIntent {
   match_count: number
   fallback_count: number
   coverage: 'none' | 'missing' | 'partial' | 'enough'
+  strategy?: string
+  signals?: string[]
+  confidence?: 'low' | 'medium' | 'high'
   message: string
 }
 
@@ -93,6 +97,9 @@ export interface TTSVoice {
 
 export interface MusicProfile {
   total_songs: number
+  playable_songs?: number
+  tagged_songs?: number
+  artist_count?: number
   total_likes: number
   total_listens: number
   genres: { name: string; count: number }[]

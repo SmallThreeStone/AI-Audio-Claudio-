@@ -7,11 +7,18 @@ import PersonaSelector from './PersonaSelector'
 import VoiceInput from './VoiceInput'
 
 const QUICK_PROMPTS = [
-  '深夜加班，来点能撑住的',
-  '下雨天，想要氛围感音乐',
-  '运动健身，来点燃的',
-  '周末早晨，轻松慵懒的',
-  '失恋了，需要治愈系',
+  '来几首梁博，适合晚上开车',
+  '少说话多放歌，来点民谣摇滚',
+  '下雨天，想要有空间感的歌',
+  '运动健身，节奏要更燃一点',
+  '深夜加班，别太吵但要撑得住',
+]
+
+const CONTROL_CHIPS = [
+  '只听这个艺人',
+  '少说话多放歌',
+  '优先我的歌单',
+  '不够就补相近风格',
 ]
 
 export default function ChatInput() {
@@ -103,6 +110,16 @@ export default function ChatInput() {
     }
   }
 
+  const appendControl = (chip: string) => {
+    setText((prev) => {
+      const base = prev.trim()
+      if (!base) return chip
+      if (base.includes(chip)) return base
+      return `${base}，${chip}`
+    })
+    inputRef.current?.focus()
+  }
+
   const showIdle = !isGenerating && !isSubmitting
   const showDemoEntry = demoAvailable && !user && !demoMode
 
@@ -166,7 +183,7 @@ export default function ChatInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="描述心情、天气、场景，AI DJ 会为你开播"
+          placeholder="例如：来几首梁博，别太吵，适合晚上开车"
           disabled={isSubmitting || isGenerating}
           className="dj-command-input"
         />
@@ -184,6 +201,14 @@ export default function ChatInput() {
             </svg>
           )}
         </button>
+      </div>
+
+      <div className="dj-control-strip">
+        {CONTROL_CHIPS.map((chip) => (
+          <button key={chip} onClick={() => appendControl(chip)}>
+            {chip}
+          </button>
+        ))}
       </div>
 
       {isGenerating && (
@@ -216,7 +241,7 @@ export default function ChatInput() {
         <div className="signal-suggestion-block">
           <div className="signal-suggestion-title">
             <span />
-            <p>AI 推荐点播</p>
+            <p>可直接交给 DJ 的指令</p>
           </div>
           <div className="signal-chip-row">
             {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (

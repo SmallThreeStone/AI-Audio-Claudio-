@@ -15,7 +15,7 @@ export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePau
   const prevVolumeRef = useRef(volume)
 
   const hasPlayableItems = queue.some(
-    (item) => item.status !== 'error' && item.status !== 'skipped'
+    (item) => item.status === 'ready'
   )
   if (!session || !hasPlayableItems) return null
 

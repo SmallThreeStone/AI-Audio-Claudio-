@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../../store'
 import { getPlaylists, syncPlaylists } from '../../api/playlists'
 import { getAuthStatus } from '../../api/auth'
+import { getMusicProfile } from '../../api/radio'
+import type { MusicProfile } from '../../types'
+import LibraryHealthPanel from './LibraryHealthPanel'
 
 const GENRE_TAGS = ['全部', '华语', '欧美', '日语', '韩语', '电子', '摇滚', '轻音乐', '说唱', '民谣']
 
@@ -28,6 +31,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
   const { playlists, setPlaylists, user, setNotice } = useStore()
   const [syncing, setSyncing] = useState(false)
   const [activeTag, setActiveTag] = useState('全部')
+  const [profile, setProfile] = useState<MusicProfile | null>(null)
 
   useEffect(() => {
     loadPlaylists()
@@ -37,6 +41,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
     try {
       const data = await getPlaylists()
       setPlaylists(data)
+      getMusicProfile().then(setProfile).catch(() => {})
     } catch (e) {
       console.warn('Playlists load failed:', e)
     }
@@ -89,7 +94,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       <div className="playlist-library__header">
         <div>
           <span>网易云歌单</span>
-          <h3>歌单库</h3>
+          <h3>AI 素材库</h3>
         </div>
         <button
           onClick={handleSync}
@@ -101,25 +106,28 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       </div>
 
       {playlists.length > 0 && (
-        <div className="playlist-library__stats">
-          <div>
-            <strong>{playlists.length}</strong>
-            <span>歌单</span>
+        <>
+          <LibraryHealthPanel playlists={playlists} profile={profile} compact={hideHeader} />
+          <div className="playlist-library__stats">
+            <div>
+              <strong>{playlists.length}</strong>
+              <span>歌单</span>
+            </div>
+            <div>
+              <strong>{totalSongs}</strong>
+              <span>歌曲</span>
+            </div>
+            <div>
+              <strong>{likedCount}</strong>
+              <span>喜欢歌单</span>
+            </div>
           </div>
-          <div>
-            <strong>{totalSongs}</strong>
-            <span>歌曲</span>
-          </div>
-          <div>
-            <strong>{likedCount}</strong>
-            <span>标记</span>
-          </div>
-        </div>
+        </>
       )}
 
       {!hideHeader && playlists.length === 0 && (
         <div className="playlist-library__hint">
-          <p>同步后，AI DJ 会优先从你的歌单里匹配心情和歌曲。</p>
+          <p>同步后，AI DJ 会把这些歌单当成素材库，用来匹配艺人、心情和场景。</p>
         </div>
       )}
 

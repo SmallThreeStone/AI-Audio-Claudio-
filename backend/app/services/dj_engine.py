@@ -154,7 +154,7 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
         return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids)
     except Exception as e:
         logger.warning("DeepSeek API failed, using fallback: %s", e)
-        script = _enforce_artist_selection(_fallback_script(songs, user_request, persona, weather_info), songs, artist_names)
+        script = _enforce_artist_selection(_fallback_script(songs, user_request, persona, weather_info, artist_names=artist_names), songs, artist_names)
         return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids)
 
 
@@ -353,7 +353,9 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         other_songs = [s for s in all_candidates if s.id not in artist_match_ids]
         artist_matches.sort(key=lambda s: -(s.popularity or 0))
         other_songs.sort(key=lambda s: -(s.popularity or 0))
-        songs = artist_matches[:limit] + other_songs[:limit - len(artist_matches)]
+        songs = artist_matches[:limit]
+        if len(songs) < limit:
+            songs.extend(other_songs[:limit - len(songs)])
     elif mood_keywords:
         scored = []
         for s in all_candidates:
@@ -438,6 +440,7 @@ def _extract_requested_artist_hint(user_request: str) -> str | None:
     }
     patterns = [
         r"(?:来|放|播|听)(?:一?首|点|些|几首)?(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,24})的歌",
+        r"(?:来|放|播|听)(?:一?首|点|些|几首)?(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,16})(?:，|,|。|\.|；|;|\s)+(?:适合|要|别|少|多|不够|优先|晚上|早上|深夜|开车|通勤|加班|运动)",
         r"(?:来|放|播|听)(?:一?首|点|些|几首)?(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,16})$",
     ]
     stop_words = {"歌", "音乐", "歌曲", "好歌", "电台", "推荐", "来首", "放点", "听点"}
@@ -447,6 +450,7 @@ def _extract_requested_artist_hint(user_request: str) -> str | None:
             continue
         artist = m.group("artist").strip(" ，。,.!！?？")
         artist = re.sub(r"^(一首|点|些|几首)", "", artist).strip()
+        artist = re.sub(r"(适合|要|别|少|多|不够|优先|晚上|早上|深夜|开车|通勤|加班|运动).*$", "", artist).strip()
         if 2 <= len(artist) <= 24 and artist not in stop_words and artist not in non_artist_words:
             return artist
     return None
@@ -470,13 +474,18 @@ def _enforce_artist_selection(script: dict, songs: list, artist_names: list[str]
         item.get("song_id") for item in script.get("script", [])
         if item.get("type") == "song" and item.get("song_id") is not None
     ]
-    missing_ids = [song_id for song_id in artist_ids if song_id not in selected_ids]
+    missing_ids = [
+        s.id for s in songs
+        if hasattr(s, "id") and s.id in artist_ids and s.id not in selected_ids
+    ]
     if not missing_ids:
         return script
 
     song_map = {s.id: s for s in songs if hasattr(s, "id")}
     inserts = []
-    for song_id in missing_ids[:max(0, 3 - len([sid for sid in selected_ids if sid in artist_ids]))]:
+    selected_artist_count = len([sid for sid in selected_ids if sid in artist_ids])
+    target_artist_count = min(6, len(artist_ids))
+    for song_id in missing_ids[:max(0, target_artist_count - selected_artist_count)]:
         song = song_map.get(song_id)
         if not song:
             continue
@@ -498,6 +507,9 @@ def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], 
             "match_count": 0,
             "fallback_count": 0,
             "coverage": "none",
+            "strategy": "心情画像优先",
+            "signals": _intent_signals(user_request, []),
+            "confidence": "medium",
             "message": "AI 将根据你的心情和听歌画像选歌。",
         }
         return script
@@ -511,12 +523,18 @@ def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], 
     fallback_count = max(0, len(selected_song_ids) - selected_artist_count)
     if artist_match_count >= 6:
         coverage = "enough"
+        confidence = "high"
+        strategy = "艺人优先"
         message = f"已识别艺人「{'、'.join(artist_names)}」，从你的歌单库中找到 {artist_match_count} 首可选歌曲。"
     elif artist_match_count > 0:
         coverage = "partial"
+        confidence = "medium"
+        strategy = "艺人优先 + 风格补齐"
         message = f"已识别艺人「{'、'.join(artist_names)}」，你的歌单库中找到 {artist_match_count} 首，已用相近风格补齐。"
     else:
         coverage = "missing"
+        confidence = "low"
+        strategy = "相近风格兜底"
         message = f"已识别艺人「{'、'.join(artist_names)}」，但你的歌单库里暂时没有可播放歌曲，已按相近风格推荐。"
 
     script["ai_intent"] = {
@@ -525,9 +543,26 @@ def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], 
         "match_count": artist_match_count,
         "fallback_count": fallback_count,
         "coverage": coverage,
+        "strategy": strategy,
+        "signals": _intent_signals(user_request, artist_names),
+        "confidence": confidence,
         "message": message,
     }
     return script
+
+
+def _intent_signals(user_request: str, artist_names: list[str]) -> list[str]:
+    signals = []
+    if artist_names:
+        signals.append("艺人")
+    if _extract_mood_keywords(user_request):
+        signals.append("情绪")
+    scene_words = ["开车", "加班", "运动", "睡觉", "通勤", "学习", "工作", "下雨", "深夜", "早晨", "周末"]
+    if any(word in user_request for word in scene_words):
+        signals.append("场景")
+    if not signals:
+        signals.append("自由点播")
+    return signals
 
 
 async def _build_library_summary(db: AsyncSession, user_id: int | None = None) -> str:
@@ -799,7 +834,7 @@ def _current_time_context() -> str:
     return f"现在是{weekday}{period} {now.hour}:{now.minute:02d}，请根据这个时段调整问候语、选歌风格和整体氛围。"
 
 
-def _fallback_script(songs, user_request: str, persona: str = "xiaoyu", weather_info: str | None = None) -> dict:
+def _fallback_script(songs, user_request: str, persona: str = "xiaoyu", weather_info: str | None = None, artist_names: list[str] | None = None) -> dict:
     """Local rule-based song selection when DeepSeek API is unavailable."""
     import random as _random
     _random.seed()
@@ -824,9 +859,17 @@ def _fallback_script(songs, user_request: str, persona: str = "xiaoyu", weather_
     else:
         mood_pool = [s for s in songs if s.mood_tags]
         no_mood = [s for s in songs if not s.mood_tags]
+        artist_pool = [
+            s for s in songs
+            if artist_names and any(name in (s.artist or "") for name in artist_names)
+        ]
+        artist_ids = {s.id for s in artist_pool}
+        mood_pool = [s for s in mood_pool if s.id not in artist_ids]
+        no_mood = [s for s in no_mood if s.id not in artist_ids]
         _random.shuffle(mood_pool)
         _random.shuffle(no_mood)
-        picks = mood_pool[:6]
+        picks = artist_pool[:6]
+        picks.extend(mood_pool[:max(0, 6 - len(picks))])
         picks.extend(no_mood[:max(0, 6 - len(picks))])
 
     # Weather-aware greeting

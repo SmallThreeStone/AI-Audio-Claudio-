@@ -11,6 +11,7 @@ import SpeakerSelector from './SpeakerSelector'
 import UpNext from './UpNext'
 import PlayHistory from './PlayHistory'
 import ShareCard from './ShareCard'
+import AIDispatchPanel from './AIDispatchPanel'
 import { useEffect } from 'react'
 
 const STAGES = [
@@ -20,7 +21,7 @@ const STAGES = [
 ]
 
 export default function RadioPlayer() {
-  const { session, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
+  const { session, queue, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
   const { skip, skipTo, stop, togglePause, seek, previous } = useRadioPlayer()
 
   // Auto-clear notice after 8 seconds
@@ -126,25 +127,16 @@ export default function RadioPlayer() {
         </div>
       )}
 
-      {session?.ai_intent?.detected_artists?.length ? (
-        <div className={`ai-intent-panel ai-intent-panel--${session.ai_intent.coverage}`}>
-          <div>
-            <span>AI 已理解</span>
-            <strong>{session.ai_intent.detected_artists.join(' / ')}</strong>
-          </div>
-          <div>
-            <span>曲库命中</span>
-            <strong>{session.ai_intent.match_count} 首</strong>
-          </div>
-          {session.ai_intent.fallback_count > 0 && (
-            <div>
-              <span>风格补齐</span>
-              <strong>{session.ai_intent.fallback_count} 首</strong>
-            </div>
-          )}
-          <p>{session.ai_intent.message}</p>
-        </div>
-      ) : null}
+      {(session || isGenerating) && (
+        <AIDispatchPanel
+          session={session}
+          queue={queue}
+          currentItem={currentItem}
+          isGenerating={isGenerating}
+          generationStage={generationStage}
+          generationMessage={generationMessage}
+        />
+      )}
 
       {notice && (
         <div className="flex items-center gap-2 text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full pl-3 pr-1.5 py-1">
