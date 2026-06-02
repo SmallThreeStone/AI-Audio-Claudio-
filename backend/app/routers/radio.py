@@ -946,6 +946,10 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
     from ..services.audio_proxy import get_song_url
     user_id = s.user_id
     for qi in items:
+        if qi.item_type == "song" and qi.song_id and qi.status == "error" and _is_retryable_song_error(qi.error_message):
+            qi.status = "ready"
+            qi.error_message = None
+            logger.info("[Queue] Revived retryable song item_id=%d song_id=%d", qi.id, qi.song_id)
         if qi.item_type == "song" and qi.song_id and not qi.stream_url:
             url = await get_song_url(db, qi.song_id, user_id)
             if url:
@@ -953,9 +957,9 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
                 qi.status = "ready"
                 logger.info("[Queue] Refreshed URL for song_id=%d item_id=%d", qi.song_id, qi.id)
             else:
-                qi.status = "error"
-                qi.error_message = "无法获取播放链接"
-                logger.warning("[Queue] URL refresh failed for song_id=%d item_id=%d — marked error",
+                qi.status = "ready"
+                qi.error_message = None
+                logger.warning("[Queue] URL refresh deferred for song_id=%d item_id=%d",
                                qi.song_id, qi.id)
     await db.commit()
 
@@ -1007,3 +1011,10 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
         "playing_index": s.played_items,
         "initiator_client_id": initiator_client_id,
     }
+
+
+def _is_retryable_song_error(message: str | None) -> bool:
+    if not message:
+        return True
+    retryable = ["无法获取播放链接", "Song URL not available", "howler_error", "no_url"]
+    return any(token in message for token in retryable)
