@@ -75,17 +75,24 @@ def _parse_range(range_header: str, file_size: int) -> tuple[int, int]:
 async def serve_music(song_id: int, request: Request, session: AsyncSession = Depends(get_session)):
     user_id = getattr(request.state, "user_id", None)
     # F31: HTMLAudioElement requests don't carry X-Client-Id header — accept ?cid= as fallback
-    if not user_id:
-        cid = request.query_params.get("cid")
-        if cid:
-            from sqlalchemy import select as _sel
-            from ..models.user import User as _User
-            result = await session.execute(_sel(_User).where(_User.client_id == cid))
-            u = result.scalar()
-            if u:
-                user_id = u.id
-    url = await _get_active_queue_stream_url(session, song_id, user_id) if user_id else None
-    in_active_queue = await _song_in_user_active_queue(session, song_id, user_id) if user_id else False
+    cid = request.query_params.get("cid")
+    if cid:
+        from sqlalchemy import select as _sel
+        from ..models.user import User as _User
+        result = await session.execute(_sel(_User).where(_User.client_id == cid))
+        u = result.scalar()
+        if u:
+            user_id = u.id
+
+    queue_item_id = _parse_int(request.query_params.get("qid"))
+    queue_ctx = await _get_queue_item_context(session, queue_item_id, song_id)
+    if queue_ctx:
+        user_id = queue_ctx["user_id"]
+        url = queue_ctx["stream_url"]
+        in_active_queue = True
+    else:
+        url = await _get_active_queue_stream_url(session, song_id, user_id) if user_id else None
+        in_active_queue = await _song_in_user_active_queue(session, song_id, user_id) if user_id else False
     if not url and user_id and not in_active_queue and not await _song_in_user_library(session, song_id, user_id):
         logger.warning("[Audio] Song not in user's library: song_id=%d user_id=%s", song_id, user_id)
         raise HTTPException(status_code=404, detail="Song not found in user library")
@@ -130,6 +137,38 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
         media_type="audio/mpeg",
         headers={"Accept-Ranges": "bytes"},
     )
+
+
+def _parse_int(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+async def _get_queue_item_context(session: AsyncSession, queue_item_id: int | None, song_id: int) -> dict | None:
+    if not queue_item_id:
+        return None
+    from ..models.dj_session import DJSession
+    from ..models.queue_item import QueueItem
+
+    result = await session.execute(
+        select(DJSession.user_id, QueueItem.stream_url)
+        .join(DJSession, QueueItem.session_id == DJSession.id)
+        .where(
+            QueueItem.id == queue_item_id,
+            QueueItem.song_id == song_id,
+            QueueItem.item_type == "song",
+            DJSession.status.in_(["ready", "playing", "refilling"]),
+        )
+        .limit(1)
+    )
+    row = result.first()
+    if not row:
+        return None
+    return {"user_id": row[0], "stream_url": row[1]}
 
 
 async def _get_active_queue_stream_url(session: AsyncSession, song_id: int, user_id: int | None) -> str | None:

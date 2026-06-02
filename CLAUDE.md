@@ -84,9 +84,11 @@ cd frontend && npm run dev
 ### 云服务器部署规范
 
 - **只能通过 git 拉取代码**：`cd /data/claudio && git pull`，禁止 SFTP/SCP 上传单个文件
-- **只能通过 Docker Compose 启动**：`docker compose up -d --build`，禁止在容器外运行任何项目进程
+- **只能通过 Docker Compose 启动**，禁止在容器外运行任何项目进程
 - 部署流程：本地 commit + push → SSH 到服务器 → `git pull` → `docker compose down && docker compose up -d --build`
 - **Docker 架构：单容器**。frontend 是静态文件、backend + sidecar 紧耦合必须同主机 localhost 通信，拆多容器只增加复杂度无收益
+- **代码或前端资源变更必须重建镜像**：后端代码、前端 dist、依赖、Dockerfile 任一变化，都执行 `docker compose down && docker compose up -d --build`
+- **仅配置/数据变更不必重建镜像**：只改 `.env`、数据库、缓存、运行时数据时，用 `docker compose restart` 或 `docker compose up -d`
 - **不按版本区分镜像**：每次 build 覆盖 `claudio-claudio-fm:latest`，不搞版本 tag，避免镜像堆积
 
 ### 任务执行

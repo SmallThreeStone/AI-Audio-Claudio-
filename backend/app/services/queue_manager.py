@@ -148,9 +148,9 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
                         qi.stream_url = url
                         qi.status = "ready"
                     else:
-                        qi.status = "error"
-                        qi.error_message = "版权受限或无法获取播放链接"
-                        logger.warning("[Queue] song FAILED — item_id=%s song_id=%s", item_id, song_id)
+                        qi.status = "ready"
+                        qi.error_message = None
+                        logger.warning("[Queue] song URL deferred — item_id=%s song_id=%s", item_id, song_id)
                 await task_db.commit()
 
     async def resolve_all_songs():
