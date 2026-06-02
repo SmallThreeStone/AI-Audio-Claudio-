@@ -35,17 +35,17 @@ export default function Header() {
 
   return (
     <header
-      className="border-b border-[var(--color-radio-border)] bg-[var(--color-radio-surface)]/80 backdrop-blur-sm sticky top-0 z-50"
+      className="radio-topbar sticky top-0 z-50"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center">
-              <span className="text-white text-xs sm:text-sm font-bold">C</span>
+      <div className="radio-topbar__inner">
+        <div className="radio-brand-cluster">
+          <div className="radio-brand">
+            <div className="radio-brand__mark">
+              <span>R</span>
             </div>
-            <span className="text-base sm:text-lg font-bold tracking-wide">
-              Claudio<span className="text-[var(--color-radio-muted)] font-normal"> FM</span>
+            <span className="radio-brand__text">
+              iRadio<span> AI MUSIC RADIO</span>
             </span>
           </div>
           {isPlaying && (
@@ -59,9 +59,9 @@ export default function Header() {
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="radio-topbar__actions">
           {weather?.available && (
-            <div className="flex items-center gap-1 text-xs text-[var(--color-radio-muted)]" title={weather.summary}>
+            <div className="radio-status-pill" title={weather.summary}>
               <span>{WEATHER_ICON[weather.condition_code || ''] || '🌡'}</span>
               <span className="hidden sm:inline">{weather.city}</span>
               {weather.temperature != null && (
@@ -70,15 +70,15 @@ export default function Header() {
             </div>
           )}
 
-          <div className="hidden sm:flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-400" />
-            <span className="text-sm text-[var(--color-radio-muted)]">ON AIR</span>
+          <div className="radio-onair">
+            <div />
+            <span>ON AIR</span>
           </div>
 
           {session && (
             <button
               onClick={() => setShowTranscript(true)}
-              className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors px-1"
+              className="radio-text-button"
               title="查看 DJ 脚本 (T)"
             >
               脚本
@@ -88,7 +88,7 @@ export default function Header() {
           {user?.role === 'admin' && (
             <button
               onClick={() => setShowAdmin(true)}
-              className="text-xs text-[var(--color-radio-gold)] hover:text-[var(--color-radio-accent)] transition-colors px-1 font-medium"
+              className="radio-text-button radio-text-button--gold"
               title="管理面板"
             >
               管理
@@ -97,7 +97,7 @@ export default function Header() {
 
           <button
             onClick={() => setShowSettings(true)}
-            className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors px-1"
+            className="radio-icon-button"
             title="设置"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -108,21 +108,21 @@ export default function Header() {
 
           <button
             onClick={() => setShowShortcuts(true)}
-            className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors px-1"
+            className="radio-icon-button"
             title="快捷键 (?)"
           >
             ?
           </button>
 
           {user && (
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="radio-user-pill">
               {user.avatar_url && (
-                <img src={user.avatar_url} alt="" className="w-6 h-6 sm:w-7 sm:h-7 rounded-full" />
+                <img src={user.avatar_url} alt="" />
               )}
-              <span className="text-xs sm:text-sm hidden sm:inline">{user.nickname}</span>
+              <span>{user.nickname}</span>
               <button
                 onClick={handleLogout}
-                className="text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]"
+                className="radio-user-pill__logout"
               >
                 退出
               </button>

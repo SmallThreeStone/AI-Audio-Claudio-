@@ -64,12 +64,33 @@ async def radio_websocket(ws: WebSocket, user_id: int = Query(...)):
                             await check_refill(s, active.id)
 
                 elif msg_type == "error_report":
+                    queue_item_id = data.get("queue_item_id")
+                    reason = data.get("reason", "unknown")
                     logger.warning("[WS] error_report user_id=%s queue_item_id=%s reason=%s",
-                                  user_id, data.get("queue_item_id"), data.get("reason"))
+                                  user_id, queue_item_id, reason)
+                    if queue_item_id:
+                        from ..database import async_session as _as
+                        from ..models.queue_item import QueueItem
+                        from ..models.dj_session import DJSession
+                        from sqlalchemy import select as _sel
+                        async with _as() as s:
+                            r = await s.execute(
+                                _sel(QueueItem, DJSession)
+                                .join(DJSession, QueueItem.session_id == DJSession.id)
+                                .where(QueueItem.id == queue_item_id, DJSession.user_id == user_id)
+                            )
+                            row = r.first()
+                            if row:
+                                qi, active = row
+                                qi.status = "error"
+                                qi.error_message = str(reason)
+                                await s.commit()
+                                from ..routers.radio import _broadcast_queue
+                                await _broadcast_queue(s, active.id)
                     await ws_manager.broadcast_to_user(user_id, {
                         "type": "error",
-                        "queue_item_id": data.get("queue_item_id"),
-                        "message": data.get("reason", "unknown"),
+                        "queue_item_id": queue_item_id,
+                        "message": reason,
                     })
 
             except json.JSONDecodeError:

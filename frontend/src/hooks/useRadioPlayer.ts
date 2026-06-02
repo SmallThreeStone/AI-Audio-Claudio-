@@ -101,6 +101,11 @@ export function useRadioPlayer() {
         playerLog('[Player] playItem — no item at index:', index)
         return
       }
+      if (item.status !== 'ready') {
+        playerLog('[Player] playItem — item not ready, skipping id=', item.id, 'status=', item.status)
+        advanceTo(index + 1)
+        return
+      }
       playerLog('playItem idx=', index, 'id=', item.id, 'type=', item.item_type, 'token=', token)
 
       setCurrentItem(item)

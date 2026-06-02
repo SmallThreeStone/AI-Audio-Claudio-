@@ -6,27 +6,21 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg transition-colors ${
-        compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'
-      } ${
-        isCurrent
-          ? 'bg-[var(--color-radio-accent)]/10 border border-[var(--color-radio-accent)]/20'
-          : isError
-            ? 'bg-red-950/20 border border-red-900/20 opacity-60'
-            : 'bg-[var(--color-radio-card)]/50'
+      className={`queue-item ${compact ? 'queue-item--compact' : ''} ${
+        isCurrent ? 'queue-item--current' : isError ? 'queue-item--error' : ''
       }`}
     >
       {/* Icon */}
       <div className="flex-shrink-0">
         {isTTS ? (
-          <div className="w-6 h-6 rounded-full bg-[var(--color-radio-gold)]/20 flex items-center justify-center">
+          <div className="queue-item__tts">
             <svg className="w-3 h-3 text-[var(--color-radio-gold)]" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
               <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
             </svg>
           </div>
         ) : (
-          <div className="w-6 h-6 rounded bg-[var(--color-radio-surface)] flex items-center justify-center overflow-hidden">
+          <div className="queue-item__cover">
             {item.cover_url ? (
               <img src={item.cover_url} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -40,7 +34,7 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className={`truncate text-xs ${isCurrent ? 'text-[var(--color-radio-text)]' : 'text-[var(--color-radio-muted)]'}`}>
+        <p className="queue-item__title">
           {isTTS ? (
             <span className="italic">DJ {(item.tts_text || item.intro_text || '').slice(0, 40)}...</span>
           ) : (

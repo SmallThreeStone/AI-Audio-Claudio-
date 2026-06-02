@@ -83,9 +83,13 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
             u = result.scalar()
             if u:
                 user_id = u.id
-    url = await get_song_url(session, song_id, user_id)
+    url = await _get_active_queue_stream_url(session, song_id, user_id) if user_id else None
+    if not url:
+        url = await get_song_url(session, song_id, user_id)
     if not url:
         logger.warning("[Audio] No URL for song_id=%d user_id=%s — returning 404", song_id, user_id)
+        if user_id:
+            await _mark_active_queue_song_error(session, song_id, user_id, "Song URL not available")
         raise HTTPException(status_code=404, detail="Song URL not available")
 
     logger.info("[Audio] Streaming song_id=%d user_id=%s", song_id, user_id)
@@ -119,6 +123,60 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
         media_type="audio/mpeg",
         headers={"Accept-Ranges": "bytes"},
     )
+
+
+async def _get_active_queue_stream_url(session: AsyncSession, song_id: int, user_id: int | None) -> str | None:
+    if not user_id:
+        return None
+    from ..models.dj_session import DJSession
+    from ..models.queue_item import QueueItem
+
+    result = await session.execute(
+        select(QueueItem.stream_url)
+        .join(DJSession, QueueItem.session_id == DJSession.id)
+        .where(
+            DJSession.user_id == user_id,
+            DJSession.status.in_(["ready", "playing", "refilling"]),
+            QueueItem.song_id == song_id,
+            QueueItem.status == "ready",
+            QueueItem.stream_url != None,
+        )
+        .order_by(DJSession.created_at.desc(), QueueItem.position)
+        .limit(1)
+    )
+    url = result.scalar()
+    if url:
+        logger.info("[Audio] Queue URL HIT for song_id=%d user_id=%s", song_id, user_id)
+    return url
+
+
+async def _mark_active_queue_song_error(session: AsyncSession, song_id: int, user_id: int, reason: str):
+    from ..models.dj_session import DJSession
+    from ..models.queue_item import QueueItem
+    from ..utils.broadcast import ws_manager
+    from ..routers.radio import _build_queue_response
+
+    result = await session.execute(
+        select(QueueItem, DJSession)
+        .join(DJSession, QueueItem.session_id == DJSession.id)
+        .where(
+            DJSession.user_id == user_id,
+            DJSession.status.in_(["ready", "playing", "refilling"]),
+            QueueItem.song_id == song_id,
+            QueueItem.status == "ready",
+        )
+        .order_by(DJSession.created_at.desc(), QueueItem.position)
+        .limit(1)
+    )
+    row = result.first()
+    if not row:
+        return
+    qi, active = row
+    qi.status = "error"
+    qi.error_message = reason
+    await session.commit()
+    data = await _build_queue_response(session, active)
+    await ws_manager.broadcast_to_user(user_id, data)
 
 
 @router.get("/lyrics/{song_id}")

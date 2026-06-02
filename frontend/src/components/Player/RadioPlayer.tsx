@@ -32,12 +32,33 @@ export default function RadioPlayer() {
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === generationStage)
 
+  const coverUrl = currentItem?.cover_url
+  const title = currentItem?.song_name || session?.session_theme || 'Starbound Radio'
+  const subtitle = currentItem?.artist || session?.persona || 'DJ 0430 - signal standby'
+
   return (
-    <div className="w-full max-w-xl flex flex-col items-center gap-4">
+    <div className="radio-player-stage">
       <AmbientBackground />
-      <div className="relative vinyl-stage">
-        <VinylDisc />
-        <AudioWaveform />
+
+      <div className="radio-artwork-zone">
+        <div className="orbit-ring orbit-ring--outer" />
+        <div className="orbit-ring orbit-ring--inner" />
+        <div className="radio-artwork-card">
+          {coverUrl ? (
+            <img src={coverUrl} alt="" className="radio-artwork-image" />
+          ) : (
+            <div className="radio-artwork-fallback">
+              <span>iRadio</span>
+            </div>
+          )}
+          <div className="radio-artwork-bars">
+            {Array.from({ length: 13 }).map((_, i) => <span key={i} />)}
+          </div>
+        </div>
+        <div className="relative vinyl-stage">
+          <VinylDisc />
+          <AudioWaveform />
+        </div>
       </div>
 
       {isGenerating && (
@@ -117,13 +138,22 @@ export default function RadioPlayer() {
         </div>
       )}
 
-      <NowPlaying />
-      <LyricPanel />
-      <UpNext onSkipTo={skipTo} />
+      <div className="radio-title-block">
+        <p className="radio-title-kicker">{isGenerating ? generationMessage || 'Signal scanning' : session?.session_theme || 'Galaxy navigation'}</p>
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+      </div>
+
       <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
 
+      <LyricPanel />
+      <div className="desktop-player-secondary">
+        <NowPlaying />
+        <UpNext onSkipTo={skipTo} />
+      </div>
+
       {/* Tools row */}
-      <div className="w-full border-t border-[var(--color-radio-border)]/50 pt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div className="player-toolbelt">
         <PlayHistory />
         <ShareCard />
         <SpeakerSelector />

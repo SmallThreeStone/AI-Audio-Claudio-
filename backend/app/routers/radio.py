@@ -892,7 +892,9 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
                 qi.status = "ready"
                 logger.info("[Queue] Refreshed URL for song_id=%d item_id=%d", qi.song_id, qi.id)
             else:
-                logger.warning("[Queue] URL refresh failed for song_id=%d item_id=%d — will retry on play",
+                qi.status = "error"
+                qi.error_message = "无法获取播放链接"
+                logger.warning("[Queue] URL refresh failed for song_id=%d item_id=%d — marked error",
                                qi.song_id, qi.id)
     await db.commit()
 

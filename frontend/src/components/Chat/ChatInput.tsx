@@ -107,7 +107,7 @@ export default function ChatInput() {
   const showDemoEntry = demoAvailable && !user && !demoMode
 
   return (
-    <div className="w-full max-w-md">
+    <div className="dj-console-input">
       {/* Demo mode entry — shown when user has no songs */}
       {showDemoEntry && (
         <div className="mb-3 p-3 rounded-xl border border-[var(--color-radio-accent)]/30 bg-[var(--color-radio-accent)]/5 text-center">
@@ -124,12 +124,12 @@ export default function ChatInput() {
       )}
 
       {/* Persona selector + Adjust mood */}
-      <div className="flex justify-center items-center gap-2 mb-2">
+      <div className="dj-persona-row">
         <PersonaSelector />
         {session && (session.status === 'ready' || session.status === 'playing') && (
           <button
             onClick={() => { setShowAdjust(!showAdjust); setAdjustMoodText('') }}
-            className="text-[10px] px-2 py-1 rounded-full border border-[var(--color-radio-accent)]/30 text-[var(--color-radio-accent)] hover:bg-[var(--color-radio-accent)]/10 transition-colors"
+            className="signal-chip"
           >
             {showAdjust ? '取消' : '换心情'}
           </button>
@@ -138,7 +138,7 @@ export default function ChatInput() {
 
       {/* Adjust mood mini input */}
       {showAdjust && session && (
-        <div className="flex items-center gap-2 mb-2">
+        <div className="dj-adjust-row">
           <input
             type="text"
             value={adjustMoodText}
@@ -147,19 +147,19 @@ export default function ChatInput() {
             placeholder="想换什么心情？比如「想听更欢快的」..."
             disabled={adjusting}
             autoFocus
-            className="flex-1 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[var(--color-radio-accent)] disabled:opacity-50"
+            className="dj-mini-input"
           />
           <button
             onClick={handleAdjustMood}
             disabled={adjusting || !adjustMoodText.trim()}
-            className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-radio-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex-shrink-0"
+            className="dj-mini-submit"
           >
             {adjusting ? '...' : '换'}
           </button>
         </div>
       )}
 
-      <div className="flex items-center gap-2 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus-within:border-[var(--color-radio-accent)] transition-colors">
+      <div className="dj-command-bar">
         <input
           ref={inputRef}
           type="text"
@@ -168,13 +168,13 @@ export default function ChatInput() {
           onKeyDown={handleKeyDown}
           placeholder="深空广播...描述你的心情或场景，比如「加班写代码到吐了，来点能撑住的」"
           disabled={isSubmitting || isGenerating}
-          className="flex-1 bg-transparent outline-none text-sm placeholder-[var(--color-radio-muted)] disabled:opacity-50"
+          className="dj-command-input"
         />
         <VoiceInput onResult={(voiceText) => setText((prev) => prev ? `${prev} ${voiceText}` : voiceText)} />
         <button
           onClick={() => handleSubmit()}
           disabled={isSubmitting || isGenerating || !text.trim()}
-          className="w-8 h-8 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center disabled:opacity-30 hover:bg-[var(--color-radio-accent-dim)] transition-colors flex-shrink-0"
+          className="dj-command-submit"
         >
           {isSubmitting || isGenerating ? (
             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -190,7 +190,7 @@ export default function ChatInput() {
       {showIdle && greeting && (
         <button
           onClick={() => handleSubmit(suggestedMood || greeting)}
-          className="w-full mt-3 text-xs text-[var(--color-radio-accent)] bg-[var(--color-radio-accent)]/5 border border-[var(--color-radio-accent)]/20 rounded-lg px-3 py-2 hover:bg-[var(--color-radio-accent)]/10 transition-colors text-left"
+          className="dj-greeting"
         >
           <span className="opacity-60">深空广播: </span>
           {greeting}
@@ -199,12 +199,12 @@ export default function ChatInput() {
 
       {/* Quick prompts — personalized when available */}
       {showIdle && (
-        <div className="flex flex-wrap gap-2 mt-3 justify-center">
+        <div className="signal-chip-row">
           {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (
             <button
               key={prompt}
               onClick={() => handleSubmit(prompt)}
-              className="text-xs px-3 py-1.5 rounded-full border border-[var(--color-radio-border)] hover:border-[var(--color-radio-accent)] hover:bg-[var(--color-radio-accent)]/10 text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-all"
+              className="signal-chip"
             >
               {prompt}
             </button>

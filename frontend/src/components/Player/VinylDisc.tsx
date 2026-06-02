@@ -36,7 +36,7 @@ export default function VinylDisc() {
       <div className={`vinyl-disc ${isAudioLoading ? 'animate-pulse' : isPlaying ? 'playing' : 'paused'}`}>
         {/* Always render C fallback underneath; cover image hides it when loaded */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-[var(--color-radio-muted)] text-2xl font-bold">C</span>
+          <span className="text-[var(--color-radio-muted)] text-2xl font-bold">R</span>
         </div>
         {coverUrl && (
           <img

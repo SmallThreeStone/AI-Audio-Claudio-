@@ -211,39 +211,45 @@ function MainApp() {
             </div>
           )}
 
-          <div className="flex gap-4 lg:gap-6 flex-1 px-3 sm:px-4 max-w-7xl mx-auto w-full pb-16 lg:pb-0">
+          <div className="radio-console">
             {/* Desktop sidebar: queue-focused, playlists & profile collapsed */}
-            <aside className="w-72 flex-shrink-0 hidden lg:flex flex-col">
-              <div className="sticky top-12 sm:top-14 overflow-y-auto max-h-[calc(100vh-3rem)] sm:max-h-[calc(100vh-3.5rem)] py-3 sm:py-4 space-y-4">
-                {/* Collapsible playlists */}
-                <button
-                  onClick={() => setShowPlaylists(!showPlaylists)}
-                  data-onboarding="sync"
-                  className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider hover:text-[var(--color-radio-text)] transition-colors"
-                >
-                  <svg className={`w-3 h-3 transition-transform ${showPlaylists ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                  我的星系
-                </button>
+            <aside className="radio-console__left hidden lg:flex">
+              <div className="console-panel console-panel--dj" data-onboarding="chat">
+                <div className="console-panel__header">
+                  <div>
+                    <span className="console-kicker">DJ 0430</span>
+                    <h2>iRadio Console</h2>
+                  </div>
+                  <div className="signal-orb" />
+                </div>
+                <ChatInput />
+              </div>
+            </aside>
+
+            <section className="radio-console__middle hidden lg:flex">
+              <div className="console-panel console-panel--queue">
+                <div className="queue-panel-tools">
+                  <button
+                    onClick={() => setShowPlaylists(!showPlaylists)}
+                    data-onboarding="sync"
+                    className={showPlaylists ? 'active' : ''}
+                  >
+                    我的星系
+                  </button>
+                  <button
+                    onClick={() => setShowProfile(!showProfile)}
+                    className={showProfile ? 'active' : ''}
+                  >
+                    航行日志
+                  </button>
+                </div>
                 {showPlaylists && <PlaylistBrowser hideHeader />}
 
                 {/* Queue — always visible, the main focus */}
                 <QueuePanel compact />
-
-                {/* Collapsible music profile */}
-                <button
-                  onClick={() => setShowProfile(!showProfile)}
-                  className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider hover:text-[var(--color-radio-text)] transition-colors"
-                >
-                  <svg className={`w-3 h-3 transition-transform ${showProfile ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                  航行日志
-                </button>
                 {showProfile && <MusicProfilePanel hideHeader />}
               </div>
-            </aside>
+            </section>
 
             {/* Mobile content — switches by tab */}
             <main className="flex-1 flex flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 lg:hidden keyboard-avoid">
@@ -259,9 +265,8 @@ function MainApp() {
             </main>
 
             {/* Desktop main — full-width player area */}
-            <main className="flex-1 flex-col items-center gap-3 sm:gap-6 py-3 sm:py-6 min-w-0 hidden lg:flex">
+            <main className="radio-console__right hidden lg:flex">
               <RadioPlayer />
-              <div data-onboarding="chat"><ChatInput /></div>
             </main>
           </div>
         </Layout>
