@@ -13,6 +13,8 @@ from ..models.user import User
 from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
 from ..models.song import Song
+from ..models.playlist import Playlist
+from ..models.playlist_song import playlist_song_table
 from ..models.listening_history import ListeningHistory
 from ..services.dj_engine import generate_radio_script, DJ_PERSONAS
 from ..services.queue_manager import build_queue_from_script, check_refill
@@ -51,6 +53,30 @@ router = APIRouter(prefix="/api/radio", tags=["radio"])
 
 def _user_id_from(request: Request) -> int | None:
     return getattr(request.state, "user_id", None)
+
+
+def _user_song_query(user_id: int | None):
+    query = select(Song)
+    if user_id is not None:
+        query = (
+            query
+            .join(playlist_song_table, playlist_song_table.c.song_id == Song.id)
+            .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+            .where(Playlist.user_id == user_id)
+            .distinct()
+        )
+    return query
+
+
+def _user_song_count_query(user_id: int | None):
+    if user_id is None:
+        return select(func.count()).select_from(Song)
+    return (
+        select(func.count(func.distinct(playlist_song_table.c.song_id)))
+        .select_from(playlist_song_table)
+        .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+        .where(Playlist.user_id == user_id)
+    )
 
 
 class RadioRequest(BaseModel):
@@ -109,7 +135,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
 
     # Check song library
     from sqlalchemy import func
-    count_result = await session.execute(select(func.count()).select_from(Song))
+    count_result = await session.execute(_user_song_count_query(user_id))
     total = count_result.scalar() or 0
     logger.info("[Radio] /request — song_count=%s demo_mode=%s", total, DEMO_MODE if total == 0 else "off")
     if total == 0:
@@ -193,7 +219,7 @@ async def generate_from_profile(body: ProfileRadioRequest, req: Request, session
         raise HTTPException(status_code=401, detail="Not logged in")
 
     # Check song library
-    count_result = await session.execute(select(func.count()).select_from(Song))
+    count_result = await session.execute(_user_song_count_query(user_id))
     total = count_result.scalar() or 0
     if total == 0:
         if DEMO_MODE:
@@ -316,6 +342,7 @@ async def adjust_mood(body: AdjustRequest, req: Request, session: AsyncSession =
             recent_ids,
             count=5,
             persona=dj_session.persona or "xiaoyu",
+            user_id=user_id,
         )
         await replace_upcoming(session, body.session_id, script, current_pos)
         await _broadcast_queue(session, body.session_id, body.client_id)
@@ -546,9 +573,9 @@ async def get_greeting(request: Request, session: AsyncSession = Depends(get_ses
 
 
 @router.get("/demo-status")
-async def demo_status(session: AsyncSession = Depends(get_session)):
-    from sqlalchemy import func
-    count_result = await session.execute(select(func.count()).select_from(Song))
+async def demo_status(request: Request, session: AsyncSession = Depends(get_session)):
+    user_id = _user_id_from(request)
+    count_result = await session.execute(_user_song_count_query(user_id))
     total = count_result.scalar() or 0
     return {
         "demo_available": total == 0 and DEMO_MODE,
@@ -647,17 +674,20 @@ async def music_profile(request: Request, session: AsyncSession = Depends(get_se
 
     # Genre distribution
     genre_result = await session.execute(
-        select(Song.genre, func.count())
+        _user_song_query(user_id)
+        .with_only_columns(Song.genre, func.count(func.distinct(Song.id)))
         .where(Song.genre != None)
         .group_by(Song.genre)
-        .order_by(func.count().desc())
+        .order_by(func.count(func.distinct(Song.id)).desc())
         .limit(12)
     )
     genres = [{"name": g[0], "count": g[1]} for g in genre_result.all()]
 
     # Mood distribution (from mood_tags JSON)
     songs_with_moods = await session.execute(
-        select(Song.mood_tags).where(Song.mood_tags != None)
+        _user_song_query(user_id)
+        .with_only_columns(Song.mood_tags)
+        .where(Song.mood_tags != None)
     )
     mood_count = {}
     for (tags,) in songs_with_moods.all():
@@ -675,7 +705,8 @@ async def music_profile(request: Request, session: AsyncSession = Depends(get_se
 
     # BPM distribution
     bpm_result = await session.execute(
-        select(Song.bpm, func.count())
+        _user_song_query(user_id)
+        .with_only_columns(Song.bpm, func.count(func.distinct(Song.id)))
         .where(Song.bpm != None)
         .group_by(Song.bpm)
     )
@@ -695,19 +726,23 @@ async def music_profile(request: Request, session: AsyncSession = Depends(get_se
 
     # Top artists (library)
     artist_result = await session.execute(
-        select(Song.artist, func.count())
+        _user_song_query(user_id)
+        .with_only_columns(Song.artist, func.count(func.distinct(Song.id)))
         .where(Song.artist != None)
         .group_by(Song.artist)
-        .order_by(func.count().desc())
+        .order_by(func.count(func.distinct(Song.id)).desc())
         .limit(10)
     )
     artists = [{"name": a[0], "count": a[1]} for a in artist_result.all()]
 
     # Totals
-    total_result = await session.execute(select(func.count()).select_from(Song))
+    total_result = await session.execute(_user_song_count_query(user_id))
     total_songs = total_result.scalar() or 0
 
-    liked_result = await session.execute(select(func.sum(Song.like_count)).select_from(Song))
+    liked_result = await session.execute(
+        _user_song_query(user_id)
+        .with_only_columns(func.sum(Song.like_count))
+    )
     total_likes = liked_result.scalar() or 0
 
     # ===== Behavioral insights (per-user) =====

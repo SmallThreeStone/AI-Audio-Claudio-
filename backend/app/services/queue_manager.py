@@ -57,10 +57,21 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
 
     # F18: Batch-load all songs referenced in the script to avoid N+1 queries
     from ..models.song import Song
+    from ..models.playlist import Playlist
+    from ..models.playlist_song import playlist_song_table
     song_ids_in_script = [e["song_id"] for e in script.get("script", []) if e["type"] == "song"]
     existing_songs: set[int] = set()
     if song_ids_in_script:
-        batch_result = await db.execute(select(Song.id).where(Song.id.in_(song_ids_in_script)))
+        batch_query = select(Song.id).where(Song.id.in_(song_ids_in_script))
+        if s and s.user_id:
+            batch_query = (
+                batch_query
+                .join(playlist_song_table, playlist_song_table.c.song_id == Song.id)
+                .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+                .where(Playlist.user_id == s.user_id)
+                .distinct()
+            )
+        batch_result = await db.execute(batch_query)
         existing_songs = {r[0] for r in batch_result.all()}
 
     # Script items
@@ -70,7 +81,7 @@ async def build_queue_from_script(db: AsyncSession, script: dict, session_id: in
 
             # Verify song exists (lookup in pre-loaded set, not DB query)
             if song_id not in existing_songs:
-                logger.warning("Skipping non-existent song_id=%d in script", song_id)
+                logger.warning("Skipping unavailable song_id=%d in script for session_id=%s user_id=%s", song_id, session_id, s.user_id if s else None)
                 continue
 
             item = QueueItem(
@@ -223,7 +234,7 @@ async def check_refill(db: AsyncSession, session_id: int) -> bool:
     await db.commit()
 
     try:
-        script = await generate_continuation(db, session.user_request, recent_ids, count=5, persona=session.persona or "xiaoyu")
+        script = await generate_continuation(db, session.user_request, recent_ids, count=5, persona=session.persona or "xiaoyu", user_id=session.user_id)
         await build_queue_from_script(db, script, session_id, start_position=session.total_items)
 
         # Broadcast updated queue

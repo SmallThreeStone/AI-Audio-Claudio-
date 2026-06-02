@@ -8,6 +8,8 @@ from sqlalchemy import select, func, or_
 
 from ..config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from ..models.song import Song
+from ..models.playlist import Playlist
+from ..models.playlist_song import playlist_song_table
 
 logger = logging.getLogger(__name__)
 DJ_PERSONAS = {
@@ -111,8 +113,8 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
         library_summary = f"体验模式 · 示例曲库: {len(demo_songs)} 首歌曲，{len(set(s['artist'] for s in demo_songs))} 位艺人"
         behavioral_profile = "（体验模式 — 登录后获得个性化推荐）"
     else:
-        songs = await _get_song_candidates(db, user_request=user_request)
-        library_summary = await _build_library_summary(db)
+        songs = await _get_song_candidates(db, user_request=user_request, user_id=user_id)
+        library_summary = await _build_library_summary(db, user_id)
         behavioral_profile = await _build_behavioral_profile(db, user_id)
     song_text = _format_song_list(songs)
 
@@ -208,12 +210,12 @@ def _parse_json_response(text: str) -> dict:
     return parsed
 
 
-async def generate_adjustment(db: AsyncSession, original_request: str, new_mood: str, current_theme: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
+async def generate_adjustment(db: AsyncSession, original_request: str, new_mood: str, current_theme: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu", user_id: int | None = None) -> dict:
     """Generate a transition script when the user changes mood mid-session."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
-    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids)
+    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
     song_text = _format_song_list(songs)
 
     system_prompt = f"""{p['system_prompt']}
@@ -256,12 +258,12 @@ async def generate_adjustment(db: AsyncSession, original_request: str, new_mood:
         }
 
 
-async def generate_continuation(db: AsyncSession, original_request: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu") -> dict:
+async def generate_continuation(db: AsyncSession, original_request: str, recently_played_ids: list[int], count: int = 5, persona: str = "xiaoyu", user_id: int | None = None) -> dict:
     """Generate continuation songs (auto-refill)."""
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
-    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids)
+    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
 
     recently = []
     for sid in recently_played_ids:
@@ -289,14 +291,27 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     return _parse_json_response(text)
 
 
-async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 80, exclude_ids: list[int] | None = None) -> list[Song]:
+def _user_library_query(user_id: int | None):
+    query = select(Song)
+    if user_id is not None:
+        query = (
+            query
+            .join(playlist_song_table, playlist_song_table.c.song_id == Song.id)
+            .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+            .where(Playlist.user_id == user_id)
+            .distinct()
+        )
+    return query
+
+
+async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 80, exclude_ids: list[int] | None = None, user_id: int | None = None) -> list[Song]:
     """Get songs for AI to choose from. Pre-filters by mood keywords in user_request
     so that different moods get different candidate pools."""
     # Extract keywords from user request for filtering
     mood_keywords = _extract_mood_keywords(user_request)
 
     query = (
-        select(Song)
+        _user_library_query(user_id)
         .where(
             Song.mood_tags != None,
             or_(Song.has_playable_url == True, Song.last_url_fetch == None),
@@ -330,7 +345,7 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         if exclude_ids:
             existing_ids.update(exclude_ids)
         extra_query = (
-            select(Song)
+            _user_library_query(user_id)
             .where(
                 Song.id.notin_(existing_ids),
                 or_(Song.has_playable_url == True, Song.last_url_fetch == None),
@@ -361,16 +376,27 @@ def _extract_mood_keywords(user_request: str) -> list[str]:
     return keywords
 
 
-async def _build_library_summary(db: AsyncSession) -> str:
+async def _build_library_summary(db: AsyncSession, user_id: int | None = None) -> str:
     """Build a text summary of the music library."""
-    total_result = await db.execute(select(func.count()).select_from(Song))
+    if user_id is not None:
+        total_query = (
+            select(func.count(func.distinct(playlist_song_table.c.song_id)))
+            .select_from(playlist_song_table)
+            .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+            .where(Playlist.user_id == user_id)
+        )
+    else:
+        total_query = select(func.count()).select_from(Song)
+
+    total_result = await db.execute(total_query)
     total = total_result.scalar() or 0
 
     genre_result = await db.execute(
-        select(Song.genre, func.count())
+        _user_library_query(user_id)
+        .with_only_columns(Song.genre, func.count(func.distinct(Song.id)))
         .where(Song.genre != None)
         .group_by(Song.genre)
-        .order_by(func.count().desc())
+        .order_by(func.count(func.distinct(Song.id)).desc())
         .limit(10)
     )
     genres = genre_result.all()

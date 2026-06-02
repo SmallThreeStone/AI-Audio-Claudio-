@@ -144,6 +144,16 @@ async def enrich_song_moods(db: AsyncSession, user: User, batch_size: int = 50):
     return len(songs) + len(genre_songs)
 
 
+def _user_song_query(user_id: int):
+    return (
+        select(Song)
+        .join(playlist_song_table, playlist_song_table.c.song_id == Song.id)
+        .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+        .where(Playlist.user_id == user_id)
+        .distinct()
+    )
+
+
 def _classify_mood(name: str, artist: str, album: str) -> list[str]:
     """Simple keyword-based mood classification as fallback."""
     text = f"{name} {artist} {album}"
@@ -172,27 +182,31 @@ async def build_profile_prompt(db: AsyncSession, user_id: int) -> str:
 
     # Top artists
     artist_result = await db.execute(
-        select(Song.artist, func.count())
+        _user_song_query(user_id)
+        .with_only_columns(Song.artist, func.count(func.distinct(Song.id)))
         .where(Song.artist != None)
         .group_by(Song.artist)
-        .order_by(func.count().desc())
+        .order_by(func.count(func.distinct(Song.id)).desc())
         .limit(5)
     )
     top_artists = [a[0] for a in artist_result.all() if a[0]]
 
     # Top genres (from songs)
     genre_result = await db.execute(
-        select(Song.genre, func.count())
+        _user_song_query(user_id)
+        .with_only_columns(Song.genre, func.count(func.distinct(Song.id)))
         .where(Song.genre != None)
         .group_by(Song.genre)
-        .order_by(func.count().desc())
+        .order_by(func.count(func.distinct(Song.id)).desc())
         .limit(5)
     )
     top_genres = [g[0] for g in genre_result.all() if g[0]]
 
     # Top moods
     mood_result = await db.execute(
-        select(Song.mood_tags).where(Song.mood_tags != None)
+        _user_song_query(user_id)
+        .with_only_columns(Song.mood_tags)
+        .where(Song.mood_tags != None)
     )
     mood_count: dict[str, int] = {}
     for (tags,) in mood_result.all():

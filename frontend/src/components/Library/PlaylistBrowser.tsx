@@ -81,36 +81,68 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
   }
 
   const filtered = playlists.filter((pl) => matchGenre(pl, activeTag))
+  const totalSongs = playlists.reduce((sum, pl) => sum + (pl.song_count || 0), 0)
+  const likedCount = playlists.filter((pl) => pl.is_liked).length
 
   return (
-    <div className={hideHeader ? 'space-y-3 pt-1' : 'py-4 space-y-3'}>
-      {!hideHeader && (
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider">
-            我的星系
-          </h3>
+    <div className={hideHeader ? 'playlist-library playlist-library--embedded' : 'playlist-library'}>
+      <div className="playlist-library__header">
+        <div>
+          <span>网易云歌单</span>
+          <h3>歌单库</h3>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="playlist-sync-button"
+        >
+          {syncing ? '同步中' : playlists.length === 0 ? '同步' : '刷新'}
+        </button>
+      </div>
+
+      {playlists.length > 0 && (
+        <div className="playlist-library__stats">
+          <div>
+            <strong>{playlists.length}</strong>
+            <span>歌单</span>
+          </div>
+          <div>
+            <strong>{totalSongs}</strong>
+            <span>歌曲</span>
+          </div>
+          <div>
+            <strong>{likedCount}</strong>
+            <span>标记</span>
+          </div>
+        </div>
+      )}
+
+      {!hideHeader && playlists.length === 0 && (
+        <div className="playlist-library__hint">
+          <p>同步后，AI DJ 会优先从你的歌单里匹配心情和歌曲。</p>
+        </div>
+      )}
+
+      {hideHeader && playlists.length === 0 && (
+        <div className="playlist-library__hint playlist-library__hint--compact">
+          <p>同步你的歌单，AI DJ 才能从你的曲库里选歌。</p>
           <button
             onClick={handleSync}
             disabled={syncing}
-            className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)] disabled:opacity-50"
+            className="playlist-sync-button"
           >
-            {syncing ? '扫描中...' : playlists.length === 0 ? '扫描星系' : '扫描'}
+            {syncing ? '同步中' : '立即同步'}
           </button>
         </div>
       )}
 
-      {/* Genre filter chips */}
       {playlists.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="playlist-filter-row">
           {GENRE_TAGS.map((tag) => (
             <button
               key={tag}
               onClick={() => setActiveTag(tag)}
-              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                activeTag === tag
-                  ? 'border-[var(--color-radio-accent)] bg-[var(--color-radio-accent)]/10 text-[var(--color-radio-accent)]'
-                  : 'border-[var(--color-radio-border)] text-[var(--color-radio-muted)] hover:border-[var(--color-radio-muted)]'
-              }`}
+              className={activeTag === tag ? 'active' : ''}
             >
               {tag}
             </button>
@@ -119,44 +151,40 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       )}
 
       {playlists.length === 0 && !syncing ? (
-        <div className="text-center py-8">
-          <p className="text-xs text-[var(--color-radio-muted)] mb-3">
-            还未探测到星系
-          </p>
+        <div className="playlist-empty-state">
           <button
             onClick={handleSync}
-            className="px-4 py-2 bg-[var(--color-radio-accent)] text-white text-sm rounded-lg hover:bg-[var(--color-radio-accent-dim)] transition-colors"
+            className="playlist-primary-button"
           >
-            从网易云扫描
+            从网易云同步
           </button>
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="playlist-list">
           {filtered.length === 0 && activeTag !== '全部' ? (
-            <p className="text-xs text-[var(--color-radio-muted)] text-center py-4">
-              该频段下暂无星系
+            <p className="playlist-empty-copy">
+              这个分类下暂时没有歌单
             </p>
           ) : (
             filtered.map((pl) => (
               <div
                 key={pl.id}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--color-radio-card)]/50 transition-colors cursor-pointer group"
+                className="playlist-row"
               >
                 {pl.cover_url ? (
-                  <img src={pl.cover_url} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  <img src={pl.cover_url} alt="" className="playlist-row__cover" />
                 ) : (
-                  <div className="w-10 h-10 rounded-lg bg-[var(--color-radio-card)] flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-[var(--color-radio-muted)]" fill="currentColor" viewBox="0 0 24 24">
+                  <div className="playlist-row__cover playlist-row__cover--empty">
+                    <svg fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                     </svg>
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate">{pl.name}</p>
-                  <p className="text-xs text-[var(--color-radio-muted)]">
-                    {pl.song_count} 个星轨{pl.is_liked && ' · 已标记'}
-                  </p>
+                <div className="playlist-row__body">
+                  <p>{pl.name}</p>
+                  <span>{pl.song_count} 首歌</span>
                 </div>
+                {pl.is_liked && <span className="playlist-liked-mark">喜欢</span>}
               </div>
             ))
           )}
