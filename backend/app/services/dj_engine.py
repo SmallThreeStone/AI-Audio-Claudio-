@@ -10,6 +10,7 @@ from ..config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from ..models.song import Song
 from ..models.playlist import Playlist
 from ..models.playlist_song import playlist_song_table
+from ..models.listening_history import ListeningHistory
 
 logger = logging.getLogger(__name__)
 DJ_PERSONAS = {
@@ -312,69 +313,45 @@ def _user_library_query(user_id: int | None):
     return query
 
 
-async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 80, exclude_ids: list[int] | None = None, user_id: int | None = None):
+async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 140, exclude_ids: list[int] | None = None, user_id: int | None = None):
     mood_keywords = _extract_mood_keywords(user_request)
 
-    # Full library query (no mood_tags filter) for robust artist name extraction
     library_query = _user_library_query(user_id)
     if exclude_ids:
         library_query = library_query.where(Song.id.notin_(exclude_ids))
     all_library_songs = (await db.execute(library_query)).scalars().all()
 
     artist_names = _extract_artist_names(user_request, all_library_songs)
+    recent_song_ids = await _recent_song_ids(db, user_id)
+    playlist_context = await _song_playlist_context(db, user_id)
+    excluded = set(exclude_ids or [])
 
-    # Normal filtered query for the candidate pool
     query = (
         _user_library_query(user_id)
         .where(
-            Song.mood_tags != None,
             or_(Song.has_playable_url == True, Song.last_url_fetch == None),
         )
     )
-    if exclude_ids:
-        query = query.where(Song.id.notin_(exclude_ids))
+    if excluded:
+        query = query.where(Song.id.notin_(excluded))
 
     all_candidates = (await db.execute(query)).scalars().all()
 
     if artist_names:
-        # Force-include artist songs filtered out (e.g., no mood_tags)
-        candidate_ids = {s.id for s in all_candidates}
-        extra = [s for s in all_library_songs
-                 if s.id not in candidate_ids
-                 and any(a in (s.artist or "") for a in artist_names)
-                 and (s.has_playable_url is True or s.last_url_fetch is None)]
-        if extra:
-            all_candidates = list(all_candidates) + extra
-
-    if artist_names:
-        # Artist match takes priority
         artist_match_ids = {s.id for s in all_candidates if any(a in (s.artist or "") for a in artist_names)}
         artist_matches = [s for s in all_candidates if s.id in artist_match_ids]
         other_songs = [s for s in all_candidates if s.id not in artist_match_ids]
-        artist_matches.sort(key=lambda s: -(s.popularity or 0))
-        other_songs.sort(key=lambda s: -(s.popularity or 0))
+        artist_matches = _rank_song_candidates(artist_matches, user_request, mood_keywords, recent_song_ids, playlist_context)
+        other_songs = _select_diverse_candidates(other_songs, user_request, mood_keywords, recent_song_ids, playlist_context, max(0, limit - len(artist_matches[:limit])))
         songs = artist_matches[:limit]
         if len(songs) < limit:
             songs.extend(other_songs[:limit - len(songs)])
-    elif mood_keywords:
-        scored = []
-        for s in all_candidates:
-            score = 0
-            mood_text = (s.mood_tags or "") + " " + (s.genre or "")
-            for kw in mood_keywords:
-                if kw in mood_text:
-                    score += 1
-            scored.append((score, s))
-        scored.sort(key=lambda x: (-x[0], -(x[1].popularity or 0)))
-        songs = [s for (_, s) in scored[:limit]]
     else:
-        all_candidates.sort(key=lambda s: -(s.popularity or 0))
-        songs = all_candidates[:limit]
+        songs = _select_diverse_candidates(all_candidates, user_request, mood_keywords, recent_song_ids, playlist_context, limit)
 
     if len(songs) < limit:
         existing_ids = {s.id for s in songs}
-        if exclude_ids:
-            existing_ids.update(exclude_ids)
+        existing_ids.update(excluded)
         extra_query = (
             _user_library_query(user_id)
             .where(
@@ -384,11 +361,130 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
             .limit(limit - len(songs))
         )
         extra = (await db.execute(extra_query)).scalars().all()
-        songs.extend(extra)
+        songs.extend(_select_diverse_candidates(extra, user_request, mood_keywords, recent_song_ids, playlist_context, limit - len(songs)))
 
-    if not artist_names:
-        random.shuffle(songs)
+    logger.info(
+        "[DJ] candidates user_id=%s library=%s playable=%s selected=%s tagged_selected=%s request=%s",
+        user_id,
+        len(all_library_songs),
+        len(all_candidates),
+        len(songs),
+        len([s for s in songs if s.mood_tags]),
+        user_request[:40],
+    )
     return songs, artist_names
+
+
+async def _recent_song_ids(db: AsyncSession, user_id: int | None, limit: int = 80) -> set[int]:
+    if user_id is None:
+        return set()
+    result = await db.execute(
+        select(ListeningHistory.song_id)
+        .where(
+            ListeningHistory.user_id == user_id,
+            ListeningHistory.song_id != None,
+            ListeningHistory.event.in_(["started", "completed", "skipped"]),
+        )
+        .order_by(ListeningHistory.listened_at.desc())
+        .limit(limit)
+    )
+    return {row[0] for row in result.all() if row[0]}
+
+
+async def _song_playlist_context(db: AsyncSession, user_id: int | None) -> dict[int, str]:
+    if user_id is None:
+        return {}
+    result = await db.execute(
+        select(playlist_song_table.c.song_id, Playlist.name, Playlist.description)
+        .select_from(playlist_song_table)
+        .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+        .where(Playlist.user_id == user_id)
+    )
+    context: dict[int, list[str]] = {}
+    for song_id, name, desc in result.all():
+        parts = [name or "", desc or ""]
+        context.setdefault(song_id, []).append(" ".join(p for p in parts if p))
+    return {song_id: " ".join(parts) for song_id, parts in context.items()}
+
+
+def _select_diverse_candidates(songs: list, user_request: str, mood_keywords: list[str], recent_song_ids: set[int], playlist_context: dict[int, str], limit: int) -> list:
+    if limit <= 0 or not songs:
+        return []
+
+    ranked = _rank_song_candidates(songs, user_request, mood_keywords, recent_song_ids, playlist_context)
+    high_signal = [s for s in ranked if _song_match_score(s, user_request, mood_keywords, recent_song_ids, playlist_context) >= 20]
+    remaining = [s for s in ranked if s not in high_signal]
+    random.shuffle(remaining)
+
+    selected: list = []
+    artist_counts: dict[str, int] = {}
+
+    def take(pool: list, artist_cap: int):
+        for song in pool:
+            if len(selected) >= limit:
+                return
+            if song in selected:
+                continue
+            artist_key = (song.artist or "未知").split(" / ")[0]
+            if artist_counts.get(artist_key, 0) >= artist_cap:
+                continue
+            selected.append(song)
+            artist_counts[artist_key] = artist_counts.get(artist_key, 0) + 1
+
+    take(high_signal, 3)
+    take(remaining, 1)
+    if len(selected) < limit:
+        take(ranked, 3)
+    return selected[:limit]
+
+
+def _rank_song_candidates(songs: list, user_request: str, mood_keywords: list[str], recent_song_ids: set[int], playlist_context: dict[int, str]) -> list:
+    jittered = list(songs)
+    random.shuffle(jittered)
+    jittered.sort(key=lambda s: _song_match_score(s, user_request, mood_keywords, recent_song_ids, playlist_context), reverse=True)
+    return jittered
+
+
+def _song_match_score(song, user_request: str, mood_keywords: list[str], recent_song_ids: set[int], playlist_context: dict[int, str]) -> int:
+    text = " ".join([
+        song.name or "",
+        song.artist or "",
+        song.album or "",
+        song.genre or "",
+        song.mood_tags or "",
+        playlist_context.get(song.id, ""),
+    ]).lower()
+    score = 0
+    for kw in mood_keywords:
+        if kw.lower() in text:
+            score += 35
+    for term in _request_terms(user_request):
+        if term in text:
+            score += 18
+    if song.mood_tags:
+        score += 8
+    if song.genre:
+        score += 4
+    score += min(20, (song.popularity or 0) // 5)
+    score += min(16, (song.like_count or 0) * 4)
+    score -= min(18, (song.dislike_count or 0) * 6)
+    if song.id in recent_song_ids:
+        score -= 42
+    return score
+
+
+def _request_terms(user_request: str) -> list[str]:
+    import re
+
+    stop_words = {
+        "来点", "来首", "播放", "听点", "歌曲", "音乐", "一首", "几首", "适合",
+        "不想", "想听", "给我", "一点", "一些", "这个", "那个", "现在",
+    }
+    terms = set(_extract_mood_keywords(user_request))
+    for token in re.findall(r"[A-Za-z0-9]+|[\u4e00-\u9fa5]{2,6}", user_request.lower()):
+        if token not in stop_words and len(token) >= 2:
+            terms.add(token)
+    return list(terms)
 
 
 def _extract_mood_keywords(user_request: str) -> list[str]:
