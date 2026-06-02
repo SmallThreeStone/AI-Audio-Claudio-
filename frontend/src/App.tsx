@@ -83,7 +83,7 @@ function AdminAuthGate({ onVerify }: { onVerify: () => void }) {
 }
 
 function MainApp() {
-  const { isLoggedIn, showAdmin, adminVerified, setAdminVerified, setUser, setClientId, clientId, setShowTranscript, setShowShortcuts, session } = useStore()
+  const { isLoggedIn, user, showAdmin, adminVerified, setAdminVerified, setUser, setClientId, clientId, setShowTranscript, setShowShortcuts, setShowAdmin, session } = useStore()
   const [checking, setChecking] = useState(true)
   const [mobileTab, setMobileTab] = useState<MobileTab>('radio')
   const [isPulling, setIsPulling] = useState(false)
@@ -198,7 +198,7 @@ function MainApp() {
   return (
     <div className="radio-bg min-h-screen" onTouchStart={handlePtrStart} onTouchMove={handlePtrMove} onTouchEnd={handlePtrEnd}>
       {!isLoggedIn ? (
-        <div className="min-h-screen flex items-center justify-center" data-onboarding="login">
+        <div className="min-h-screen flex items-center justify-center">
           <LoginModal />
         </div>
       ) : showAdmin ? (
@@ -276,8 +276,8 @@ function MainApp() {
       <ShortcutHelp />
       <SettingsPanel />
       <InstallPrompt />
-      <OnboardingOverlay />
-      <MobileNav active={mobileTab} onChange={setMobileTab} />
+      {isLoggedIn && !showAdmin && <OnboardingOverlay />}
+      {isLoggedIn && !showAdmin && <MobileNav active={mobileTab} onChange={setMobileTab} userRole={user?.role} onAdmin={() => setShowAdmin(true)} />}
 
       {/* Landscape overlay — prompts user to rotate on short screens */}
       {!landscapeDismissed && (

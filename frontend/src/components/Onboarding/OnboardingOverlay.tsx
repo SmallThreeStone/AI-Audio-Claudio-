@@ -1,24 +1,24 @@
 import { useState, useEffect } from 'react'
 
-const ONBOARDING_KEY = 'claudio_onboarding_completed'
+const ONBOARDING_KEY = 'claudio_onboarding_completed_v2'
 
 const STEPS = [
   {
-    title: '登录网易云账号',
-    desc: '扫码或手机登录，探测你的私人星系',
-    selector: '[data-onboarding="login"]',
-    position: 'bottom',
-  },
-  {
-    title: '扫描你的星系',
-    desc: '同步网易云星系后，深空探测才能为你打捞声波',
+    title: '先同步歌单库',
+    desc: 'AI DJ 会优先从你的网易云歌单里匹配艺人、心情和场景。',
     selector: '[data-onboarding="sync"]',
     position: 'left',
   },
   {
-    title: '发送你的声波',
-    desc: '描述你此刻的心情或场景，深空探测为你打捞匹配的脉冲信号',
+    title: '说一句想听什么',
+    desc: '可以点名艺人，也可以说“少说话多放歌”“不够就补相近风格”。',
     selector: '[data-onboarding="chat"]',
+    position: 'top',
+  },
+  {
+    title: '看 AI 怎么调度',
+    desc: '节目单会显示命中、补齐、可播和待重试状态，方便你判断曲库质量。',
+    selector: '[data-onboarding="queue"]',
     position: 'top',
   },
 ]
@@ -51,13 +51,8 @@ export default function OnboardingOverlay() {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center pointer-events-none">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={finish} />
-
-      {/* Tooltip card */}
-      <div className="relative z-10 mx-4 mb-24 sm:mb-0 w-full max-w-xs bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-2xl p-5 shadow-2xl pointer-events-auto animate-in">
-        {/* Step indicator */}
+    <div className="onboarding-toast">
+      <div className="onboarding-toast__card animate-in">
         <div className="flex gap-1 mb-3">
           {STEPS.map((_, i) => (
             <div

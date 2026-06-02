@@ -5,6 +5,8 @@ export type MobileTab = 'radio' | 'playlists' | 'profile'
 interface Props {
   active: MobileTab
   onChange: (tab: MobileTab) => void
+  userRole?: string
+  onAdmin?: () => void
 }
 
 const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
@@ -19,7 +21,7 @@ const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
   },
   {
     key: 'playlists',
-    label: '星系',
+    label: '歌单库',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -28,7 +30,7 @@ const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
   },
   {
     key: 'profile',
-    label: '画像',
+    label: '偏好',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -39,7 +41,7 @@ const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
 
 const TAB_ORDER: MobileTab[] = ['radio', 'playlists', 'profile']
 
-export default function MobileNav({ active, onChange }: Props) {
+export default function MobileNav({ active, onChange, userRole, onAdmin }: Props) {
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
 
@@ -88,6 +90,17 @@ export default function MobileNav({ active, onChange }: Props) {
             </button>
           )
         })}
+        {(userRole === 'admin' || userRole === 'owner') && (
+          <button
+            onClick={onAdmin}
+            className="flex flex-col items-center justify-center gap-0.5 w-full h-full text-[var(--color-radio-muted)] transition-colors active:scale-95"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M6 7v10a2 2 0 002 2h8a2 2 0 002-2V7M9 11h6" />
+            </svg>
+            <span className="text-[10px] leading-none">管理</span>
+          </button>
+        )}
       </div>
     </nav>
   )

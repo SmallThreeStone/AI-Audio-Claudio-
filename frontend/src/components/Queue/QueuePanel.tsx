@@ -13,7 +13,7 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
     const activeStep = emptySteps.findIndex((step) => step.key === generationStage)
 
     return (
-      <div className={compact ? 'queue-panel-shell queue-panel-shell--empty' : 'queue-panel-shell queue-panel-shell--mobile'}>
+      <div className={compact ? 'queue-panel-shell queue-panel-shell--empty' : 'queue-panel-shell queue-panel-shell--mobile'} data-onboarding="queue">
         <div className={`queue-empty-state ${isGenerating ? 'queue-empty-state--generating' : ''}`}>
           <span className="queue-empty-state__kicker">{isGenerating ? '生成中' : '待开播'}</span>
           <h3>{isGenerating ? 'AI DJ 正在搭建频道' : '等待你的心情信号'}</h3>
@@ -41,7 +41,7 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
   const issueCount = upcoming.filter((item) => item.status === 'error' || item.status === 'skipped').length
 
   return (
-    <div className={compact ? 'queue-panel-shell' : 'queue-panel-shell queue-panel-shell--mobile'}>
+    <div className={compact ? 'queue-panel-shell' : 'queue-panel-shell queue-panel-shell--mobile'} data-onboarding="queue">
       <div className={`queue-panel-title ${compact ? '' : 'queue-panel-title--mobile'}`}>
         <h3>AI 节目单</h3>
         {demoMode && (

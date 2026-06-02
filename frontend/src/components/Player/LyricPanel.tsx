@@ -9,6 +9,7 @@ export default function LyricPanel() {
   const listRef = useRef<HTMLDivElement>(null)
   const fetchedSongIdRef = useRef<number | null>(null)
   const [lyricLoading, setLyricLoading] = useState(false)
+  const [immersive, setImmersive] = useState(false)
 
   const isTTS = currentItem?.item_type?.startsWith('tts')
   const songId = currentItem?.song_id
@@ -110,19 +111,27 @@ export default function LyricPanel() {
     )
   }
 
+  const compactLines = lyrics
+    .map((line, index) => ({ line, index }))
+    .filter(({ index }) => activeLyricIndex < 0 || Math.abs(index - activeLyricIndex) <= 1)
+  const visibleLines = immersive ? lyrics.map((line, index) => ({ line, index })) : compactLines
+
   return (
-    <div ref={listRef} className="lyric-panel glass-panel rounded-xl overflow-y-auto scrollbar-hide">
+    <div className={`lyric-panel glass-panel rounded-xl ${immersive ? 'lyric-panel--immersive overflow-y-auto scrollbar-hide' : 'lyric-panel--compact'}`} ref={listRef}>
+      <button className="lyric-panel__mode" onClick={() => setImmersive(!immersive)}>
+        {immersive ? '收起歌词' : '展开歌词'}
+      </button>
       <div className="lyric-list">
         {/* Top padding for centering first line */}
-        <div className="lyric-spacer" />
+        {immersive && <div className="lyric-spacer" />}
 
-        {lyrics.map((line, i) => {
-          const isActive = i === activeLyricIndex
-          const isPast = i < activeLyricIndex
+        {visibleLines.map(({ line, index }) => {
+          const isActive = index === activeLyricIndex
+          const isPast = index < activeLyricIndex
           return (
             <p
-              key={i}
-              data-lyric-index={i}
+              key={index}
+              data-lyric-index={index}
               className={`lyric-line ${isActive ? 'lyric-line-active' : isPast ? 'lyric-line-past' : ''}`}
             >
               {line.text}
@@ -131,7 +140,7 @@ export default function LyricPanel() {
         })}
 
         {/* Bottom padding for centering last line */}
-        <div className="lyric-spacer" />
+        {immersive && <div className="lyric-spacer" />}
       </div>
     </div>
   )

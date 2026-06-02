@@ -12,37 +12,54 @@ export default function LoginModal() {
   const [tab, setTab] = useState<LoginTab>('phone')
 
   return (
-    <div className="flex flex-col items-center gap-6 p-8 w-full max-w-sm">
-      <div className="text-center">
-        <div className="w-16 h-16 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center mx-auto mb-4 glow-pulse">
-          <span className="text-white text-2xl font-bold">C</span>
+    <div className="login-shell">
+      <section className="login-brief">
+        <div className="login-mark glow-pulse">
+          <span>C</span>
         </div>
-        <h1 className="text-2xl font-bold tracking-wide mb-1">
+        <h1>
           Claudio<span className="text-[var(--color-radio-muted)] font-normal"> FM</span>
         </h1>
-        <p className="text-[var(--color-radio-muted)] text-sm">你的私人 AI 电台 DJ</p>
-      </div>
+        <p>连接你的网易云歌单，让 AI DJ 按心情、场景和艺人偏好实时编排私人电台。</p>
+        <div className="login-proof">
+          <div>
+            <strong>歌单优先</strong>
+            <span>只从你的素材库开始匹配</span>
+          </div>
+          <div>
+            <strong>AI 调度</strong>
+            <span>解释命中、补齐和播放状态</span>
+          </div>
+          <div>
+            <strong>DJ 串词</strong>
+            <span>自动生成报幕和过渡</span>
+          </div>
+        </div>
+      </section>
 
-      <div className="flex w-full bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl p-1">
-        <button
-          onClick={() => setTab('phone')}
-          className={`flex-1 py-2 text-sm rounded-lg transition-colors ${
-            tab === 'phone' ? 'bg-[var(--color-radio-accent)] text-white' : 'text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]'
-          }`}
-        >
-          手机登录
-        </button>
-        <button
-          onClick={() => setTab('qr')}
-          className={`flex-1 py-2 text-sm rounded-lg transition-colors ${
-            tab === 'qr' ? 'bg-[var(--color-radio-accent)] text-white' : 'text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]'
-          }`}
-        >
-          扫码登录
-        </button>
-      </div>
+      <section className="login-panel">
+        <div className="login-panel__head">
+          <span>网易云登录</span>
+          <h2>建立你的 AI 电台素材库</h2>
+        </div>
 
-      {tab === 'phone' ? <PhoneLogin setUser={setUser} /> : <QrLogin setQrInfo={setQrInfo} clearQrInfo={clearQrInfo} setUser={setUser} />}
+        <div className="login-tabs">
+          <button
+            onClick={() => setTab('phone')}
+            className={tab === 'phone' ? 'active' : ''}
+          >
+            手机登录
+          </button>
+          <button
+            onClick={() => setTab('qr')}
+            className={tab === 'qr' ? 'active' : ''}
+          >
+            扫码登录
+          </button>
+        </div>
+
+        {tab === 'phone' ? <PhoneLogin setUser={setUser} /> : <QrLogin setQrInfo={setQrInfo} clearQrInfo={clearQrInfo} setUser={setUser} />}
+      </section>
     </div>
   )
 }
@@ -124,7 +141,7 @@ function PhoneLogin({ setUser }: { setUser: (user: any) => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-2xl p-6 flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="login-form">
       <div>
         <label className="block text-xs text-[var(--color-radio-muted)] mb-1.5">手机号</label>
         <div className="flex items-center bg-white/5 border border-[var(--color-radio-border)] rounded-lg overflow-hidden">
@@ -181,7 +198,7 @@ function PhoneLogin({ setUser }: { setUser: (user: any) => void }) {
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-2.5 bg-[var(--color-radio-accent)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-radio-accent-dim)] transition-colors disabled:opacity-50"
+        className="login-primary-button"
       >
         {loading ? '登录中...' : '登录'}
       </button>
@@ -286,7 +303,7 @@ function QrLogin({
   }
 
   return (
-    <div className="w-full bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-2xl p-6 flex flex-col items-center gap-4">
+    <div className="login-form login-form--qr">
       {isLoading ? (
         <div className="w-48 h-48 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-[var(--color-radio-accent)] border-t-transparent rounded-full animate-spin" />
