@@ -126,6 +126,26 @@ export default function RadioPlayer() {
         </div>
       )}
 
+      {session?.ai_intent?.detected_artists?.length ? (
+        <div className={`ai-intent-panel ai-intent-panel--${session.ai_intent.coverage}`}>
+          <div>
+            <span>AI 已理解</span>
+            <strong>{session.ai_intent.detected_artists.join(' / ')}</strong>
+          </div>
+          <div>
+            <span>曲库命中</span>
+            <strong>{session.ai_intent.match_count} 首</strong>
+          </div>
+          {session.ai_intent.fallback_count > 0 && (
+            <div>
+              <span>风格补齐</span>
+              <strong>{session.ai_intent.fallback_count} 首</strong>
+            </div>
+          )}
+          <p>{session.ai_intent.message}</p>
+        </div>
+      ) : null}
+
       {notice && (
         <div className="flex items-center gap-2 text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full pl-3 pr-1.5 py-1">
           <span>{notice}</span>

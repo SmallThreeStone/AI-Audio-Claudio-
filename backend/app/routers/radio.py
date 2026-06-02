@@ -1,6 +1,7 @@
 import json
 import datetime
 import logging
+import ast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -181,7 +182,7 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     try:
         await _progress("analyzing", "解读心情，构思歌单...")
         script = await generate_radio_script(session, body.text, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id, demo_songs=demo_songs if total == 0 else None)
-        dj_session.ai_response_raw = str(script)
+        dj_session.ai_response_raw = json.dumps(script, ensure_ascii=False)
         dj_session.session_theme = script.get("session_theme", "")
         logger.info("[Radio] /request — AI script generated session_id=%s theme=%s items=%s",
                     dj_session.id, script.get("session_theme", ""), len(script.get("script", [])))
@@ -279,7 +280,7 @@ async def generate_from_profile(body: ProfileRadioRequest, req: Request, session
     try:
         await _progress("analyzing", "解读你的音乐品味，构思专属歌单...")
         script = await generate_radio_script(session, profile_prompt, dj_session.id, persona=body.persona, weather_info=weather_summary, calendar_info=calendar_summary, user_id=user.id, demo_songs=demo_songs if total == 0 else None)
-        dj_session.ai_response_raw = str(script)
+        dj_session.ai_response_raw = json.dumps(script, ensure_ascii=False)
         dj_session.session_theme = script.get("session_theme", "")
         if total == 0 and DEMO_MODE:
             script = _demo_script_variant(script)
@@ -371,6 +372,7 @@ async def list_sessions(request: Request, session: AsyncSession = Depends(get_se
             "total_items": s.total_items,
             "played_items": s.played_items,
             "weather_summary": s.weather_summary,
+            "ai_intent": _extract_ai_intent(s.ai_response_raw),
             "created_at": s.created_at.isoformat() if s.created_at else None,
         }
         for s in sessions
@@ -510,6 +512,7 @@ def _session_status_msg(s: DJSession) -> dict:
             "total_items": s.total_items,
             "played_items": s.played_items,
             "weather_summary": s.weather_summary,
+            "ai_intent": _extract_ai_intent(s.ai_response_raw),
             "created_at": s.created_at.isoformat() if s.created_at else None,
         },
         "message": _status_message(s.status),
@@ -526,6 +529,29 @@ def _status_message(status: str) -> str:
         "completed": "本期电台已结束",
         "error": "出错了",
     }.get(status, status)
+
+
+def _extract_ai_intent(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            data = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            return None
+    if isinstance(data, dict) and isinstance(data.get("ai_intent"), dict):
+        return data["ai_intent"]
+    return None
+
+
+def _queue_reason_tags(artist: str | None, detected_artists: list[str]) -> list[str]:
+    if not detected_artists:
+        return ["AI 推荐"]
+    if artist and any(name in artist for name in detected_artists):
+        return ["艺人命中", "来自你的歌单"]
+    return ["相近风格", "AI 补齐"]
 
 
 @router.get("/personas")
@@ -933,6 +959,8 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
                                qi.song_id, qi.id)
     await db.commit()
 
+    ai_intent = _extract_ai_intent(s.ai_response_raw)
+    detected_artists = ai_intent.get("detected_artists", []) if ai_intent else []
     enriched = []
     for qi in items:
         entry = {
@@ -957,6 +985,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
                 entry["artist"] = song.artist
                 entry["cover_url"] = song.cover_url
                 entry["duration_ms"] = song.duration_ms
+                entry["reason_tags"] = _queue_reason_tags(song.artist, detected_artists)
 
         enriched.append(entry)
 
@@ -971,6 +1000,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
             "total_items": s.total_items,
             "played_items": s.played_items,
             "weather_summary": s.weather_summary,
+            "ai_intent": ai_intent,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         },
         "items": enriched,

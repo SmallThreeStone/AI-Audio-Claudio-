@@ -44,6 +44,13 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
             </>
           )}
         </p>
+        {!isTTS && item.reason_tags?.length ? (
+          <div className="queue-item__tags">
+            {item.reason_tags.slice(0, 2).map((tag) => (
+              <span key={tag}>{tag}</span>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {/* Status */}

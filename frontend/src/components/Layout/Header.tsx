@@ -107,7 +107,7 @@ export default function Header() {
             </button>
           )}
 
-          {user?.role === 'admin' && (
+          {(user?.role === 'admin' || user?.role === 'owner') && (
             <button
               onClick={() => setShowAdmin(true)}
               className="radio-text-button radio-text-button--gold"

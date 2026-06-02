@@ -50,6 +50,16 @@ export interface QueueItem {
   status: 'pending' | 'tts_generating' | 'ready' | 'error' | 'skipped' | 'completed'
   error_message?: string
   user_feedback?: 'liked' | 'disliked'
+  reason_tags?: string[]
+}
+
+export interface AIIntent {
+  raw_request: string
+  detected_artists: string[]
+  match_count: number
+  fallback_count: number
+  coverage: 'none' | 'missing' | 'partial' | 'enough'
+  message: string
 }
 
 export interface DJSession {
@@ -61,6 +71,7 @@ export interface DJSession {
   total_items: number
   played_items: number
   weather_summary?: string
+  ai_intent?: AIIntent | null
   created_at: string
 }
 

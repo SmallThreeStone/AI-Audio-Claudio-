@@ -108,15 +108,17 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
 
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
+    artist_names: list[str] = []
     if demo_songs:
         songs = demo_songs
         library_summary = f"体验模式 · 示例曲库: {len(demo_songs)} 首歌曲，{len(set(s['artist'] for s in demo_songs))} 位艺人"
         behavioral_profile = "（体验模式 — 登录后获得个性化推荐）"
     else:
-        songs = await _get_song_candidates(db, user_request=user_request, user_id=user_id)
+        songs, artist_names = await _get_song_candidates(db, user_request=user_request, user_id=user_id)
         library_summary = await _build_library_summary(db, user_id)
         behavioral_profile = await _build_behavioral_profile(db, user_id)
-    song_text = _format_song_list(songs)
+    artist_matched_ids = _artist_matched_ids(songs, artist_names)
+    song_text = _format_song_list(songs, artist_matched_ids=artist_matched_ids if artist_names else None)
 
     weather_block = ""
     if weather_info:
@@ -126,7 +128,11 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
     if calendar_info:
         calendar_block = f"\n【日程提醒】\n{calendar_info}\n"
 
-    user_prompt = f"""听众说："{user_request}"{weather_block}{calendar_block}
+    artist_block = ""
+    if artist_names:
+        artist_block = f"\n【艺人匹配】听众指定了艺人: {', '.join(artist_names)}。候选歌曲列表中带 ★艺人匹配 标记的就是这些艺人的歌（共 {len(artist_matched_ids)} 首）。如果匹配歌曲少于 6 首，请先选完这些匹配歌曲，再用相近风格补齐，并在串词里坦诚说明“曲库里的该艺人歌曲不多，已补充相近风格”。\n"
+
+    user_prompt = f"""听众说："{user_request}"{weather_block}{calendar_block}{artist_block}
 
 【当前时间】
 {_current_time_context()}
@@ -144,10 +150,12 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
 
     try:
         text = await _call_deepseek(client, p["system_prompt"], user_prompt)
-        return _parse_json_response(text)
+        script = _enforce_artist_selection(_parse_json_response(text), songs, artist_names)
+        return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids)
     except Exception as e:
         logger.warning("DeepSeek API failed, using fallback: %s", e)
-        return _fallback_script(songs, user_request, persona, weather_info)
+        script = _enforce_artist_selection(_fallback_script(songs, user_request, persona, weather_info), songs, artist_names)
+        return _attach_ai_intent(script, user_request, artist_names, artist_matched_ids)
 
 
 async def _call_deepseek(client: AsyncOpenAI, system_prompt: str, user_prompt: str, retries: int = 2, max_tokens: int = 4096) -> str:
@@ -215,7 +223,7 @@ async def generate_adjustment(db: AsyncSession, original_request: str, new_mood:
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
-    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
+    songs, _ = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
     song_text = _format_song_list(songs)
 
     system_prompt = f"""{p['system_prompt']}
@@ -263,7 +271,7 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
     p = DJ_PERSONAS.get(persona, DJ_PERSONAS["xiaoyu"])
 
-    songs = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
+    songs, _ = await _get_song_candidates(db, exclude_ids=recently_played_ids, user_id=user_id)
 
     recently = []
     for sid in recently_played_ids:
@@ -304,12 +312,18 @@ def _user_library_query(user_id: int | None):
     return query
 
 
-async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 80, exclude_ids: list[int] | None = None, user_id: int | None = None) -> list[Song]:
-    """Get songs for AI to choose from. Pre-filters by mood keywords in user_request
-    so that different moods get different candidate pools."""
-    # Extract keywords from user request for filtering
+async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 80, exclude_ids: list[int] | None = None, user_id: int | None = None):
     mood_keywords = _extract_mood_keywords(user_request)
 
+    # Full library query (no mood_tags filter) for robust artist name extraction
+    library_query = _user_library_query(user_id)
+    if exclude_ids:
+        library_query = library_query.where(Song.id.notin_(exclude_ids))
+    all_library_songs = (await db.execute(library_query)).scalars().all()
+
+    artist_names = _extract_artist_names(user_request, all_library_songs)
+
+    # Normal filtered query for the candidate pool
     query = (
         _user_library_query(user_id)
         .where(
@@ -322,8 +336,25 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
 
     all_candidates = (await db.execute(query)).scalars().all()
 
-    if mood_keywords:
-        # Score songs by keyword match in mood_tags + genre
+    if artist_names:
+        # Force-include artist songs filtered out (e.g., no mood_tags)
+        candidate_ids = {s.id for s in all_candidates}
+        extra = [s for s in all_library_songs
+                 if s.id not in candidate_ids
+                 and any(a in (s.artist or "") for a in artist_names)
+                 and (s.has_playable_url is True or s.last_url_fetch is None)]
+        if extra:
+            all_candidates = list(all_candidates) + extra
+
+    if artist_names:
+        # Artist match takes priority
+        artist_match_ids = {s.id for s in all_candidates if any(a in (s.artist or "") for a in artist_names)}
+        artist_matches = [s for s in all_candidates if s.id in artist_match_ids]
+        other_songs = [s for s in all_candidates if s.id not in artist_match_ids]
+        artist_matches.sort(key=lambda s: -(s.popularity or 0))
+        other_songs.sort(key=lambda s: -(s.popularity or 0))
+        songs = artist_matches[:limit] + other_songs[:limit - len(artist_matches)]
+    elif mood_keywords:
         scored = []
         for s in all_candidates:
             score = 0
@@ -332,11 +363,9 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
                 if kw in mood_text:
                     score += 1
             scored.append((score, s))
-        # Sort: matching songs first (by score desc + popularity desc), then rest by popularity
         scored.sort(key=lambda x: (-x[0], -(x[1].popularity or 0)))
         songs = [s for (_, s) in scored[:limit]]
     else:
-        # No keywords: sort by popularity
         all_candidates.sort(key=lambda s: -(s.popularity or 0))
         songs = all_candidates[:limit]
 
@@ -355,8 +384,9 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         extra = (await db.execute(extra_query)).scalars().all()
         songs.extend(extra)
 
-    random.shuffle(songs)
-    return songs
+    if not artist_names:
+        random.shuffle(songs)
+    return songs, artist_names
 
 
 def _extract_mood_keywords(user_request: str) -> list[str]:
@@ -374,6 +404,130 @@ def _extract_mood_keywords(user_request: str) -> list[str]:
         if kw in user_request:
             keywords.append(kw)
     return keywords
+
+
+def _extract_artist_names(user_request: str, songs: list) -> list[str]:
+    """Extract artist names from user request by substring-matching against known artists in the library."""
+    # Collect all unique artist names from the candidate pool
+    known_artists: set[str] = set()
+    for s in songs:
+        if s.artist:
+            for name in s.artist.split(" / "):
+                name = name.strip()
+                if len(name) >= 2:
+                    known_artists.add(name)
+
+    # Match against user request — longer names first to avoid partial matches
+    matched = []
+    for artist in sorted(known_artists, key=lambda a: -len(a)):
+        if artist in user_request:
+            matched.append(artist)
+    if matched:
+        return matched
+
+    hint = _extract_requested_artist_hint(user_request)
+    return [hint] if hint else []
+
+
+def _extract_requested_artist_hint(user_request: str) -> str | None:
+    import re
+
+    non_artist_words = set(_extract_mood_keywords(user_request)) | {
+        "摇滚", "流行", "电子", "古典", "爵士", "民谣", "说唱", "嘻哈", "蓝调",
+        "中文", "英文", "日文", "韩文", "粤语", "国语", "轻音乐", "纯音乐",
+    }
+    patterns = [
+        r"(?:来|放|播|听)(?:一?首|点|些|几首)?(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,24})的歌",
+        r"(?:来|放|播|听)(?:一?首|点|些|几首)?(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,16})$",
+    ]
+    stop_words = {"歌", "音乐", "歌曲", "好歌", "电台", "推荐", "来首", "放点", "听点"}
+    for pattern in patterns:
+        m = re.search(pattern, user_request.strip())
+        if not m:
+            continue
+        artist = m.group("artist").strip(" ，。,.!！?？")
+        artist = re.sub(r"^(一首|点|些|几首)", "", artist).strip()
+        if 2 <= len(artist) <= 24 and artist not in stop_words and artist not in non_artist_words:
+            return artist
+    return None
+
+
+def _artist_matched_ids(songs: list, artist_names: list[str]) -> set[int]:
+    if not artist_names:
+        return set()
+    return {
+        s.id for s in songs
+        if hasattr(s, "id") and any(a in (s.artist or "") for a in artist_names)
+    }
+
+
+def _enforce_artist_selection(script: dict, songs: list, artist_names: list[str]) -> dict:
+    artist_ids = _artist_matched_ids(songs, artist_names)
+    if not artist_ids:
+        return script
+
+    selected_ids = [
+        item.get("song_id") for item in script.get("script", [])
+        if item.get("type") == "song" and item.get("song_id") is not None
+    ]
+    missing_ids = [song_id for song_id in artist_ids if song_id not in selected_ids]
+    if not missing_ids:
+        return script
+
+    song_map = {s.id: s for s in songs if hasattr(s, "id")}
+    inserts = []
+    for song_id in missing_ids[:max(0, 3 - len([sid for sid in selected_ids if sid in artist_ids]))]:
+        song = song_map.get(song_id)
+        if not song:
+            continue
+        inserts.append({
+            "type": "song",
+            "song_id": song.id,
+            "intro_text": f"你点到的{song.artist}，我从你的歌单里找到了这首{song.name}。",
+        })
+    if inserts:
+        script["script"] = inserts + script.get("script", [])
+    return script
+
+
+def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], artist_matched_ids: set[int]) -> dict:
+    if not artist_names:
+        script["ai_intent"] = {
+            "raw_request": user_request,
+            "detected_artists": [],
+            "match_count": 0,
+            "fallback_count": 0,
+            "coverage": "none",
+            "message": "AI 将根据你的心情和听歌画像选歌。",
+        }
+        return script
+
+    selected_song_ids = [
+        item.get("song_id") for item in script.get("script", [])
+        if item.get("type") == "song" and item.get("song_id") is not None
+    ]
+    artist_match_count = len(artist_matched_ids)
+    selected_artist_count = len([song_id for song_id in selected_song_ids if song_id in artist_matched_ids])
+    fallback_count = max(0, len(selected_song_ids) - selected_artist_count)
+    if artist_match_count >= 6:
+        coverage = "enough"
+        message = f"已识别艺人「{'、'.join(artist_names)}」，从你的歌单库中找到 {artist_match_count} 首可选歌曲。"
+    elif artist_match_count > 0:
+        coverage = "partial"
+        message = f"已识别艺人「{'、'.join(artist_names)}」，你的歌单库中找到 {artist_match_count} 首，已用相近风格补齐。"
+    else:
+        coverage = "missing"
+        message = f"已识别艺人「{'、'.join(artist_names)}」，但你的歌单库里暂时没有可播放歌曲，已按相近风格推荐。"
+
+    script["ai_intent"] = {
+        "raw_request": user_request,
+        "detected_artists": artist_names,
+        "match_count": artist_match_count,
+        "fallback_count": fallback_count,
+        "coverage": coverage,
+        "message": message,
+    }
+    return script
 
 
 async def _build_library_summary(db: AsyncSession, user_id: int | None = None) -> str:
@@ -599,7 +753,7 @@ async def _build_behavioral_profile(db: AsyncSession, user_id: int | None = None
     return "\n".join(lines)
 
 
-def _format_song_list(songs) -> str:
+def _format_song_list(songs, artist_matched_ids: set[int] | None = None) -> str:
     """Format songs for AI prompt — includes genre and bpm for better matching."""
     lines = []
     for i, s in enumerate(songs):
@@ -610,8 +764,9 @@ def _format_song_list(songs) -> str:
             genre = s.genre or ""
             bpm = f"bpm:{s.bpm}" if s.bpm else ""
             dur = f"{s.duration_ms // 60000}:{(s.duration_ms % 60000) // 1000:02d}" if s.duration_ms else "?"
+            matched = "★艺人匹配" if artist_matched_ids and s.id in artist_matched_ids else ""
             parts = [
-                f"[id:{s.id}] {s.name} - {s.artist}",
+                f"[id:{s.id}] {s.name} - {s.artist} {matched}",
                 f"风格:{genre}" if genre else "",
                 f"心情:{tags}" if tags else "",
                 bpm,

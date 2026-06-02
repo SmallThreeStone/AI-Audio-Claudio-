@@ -85,11 +85,14 @@ async def serve_music(song_id: int, request: Request, session: AsyncSession = De
             if u:
                 user_id = u.id
     url = await _get_active_queue_stream_url(session, song_id, user_id) if user_id else None
-    if not url and user_id and not await _song_in_user_library(session, song_id, user_id):
+    in_active_queue = await _song_in_user_active_queue(session, song_id, user_id) if user_id else False
+    if not url and user_id and not in_active_queue and not await _song_in_user_library(session, song_id, user_id):
         logger.warning("[Audio] Song not in user's library: song_id=%d user_id=%s", song_id, user_id)
         raise HTTPException(status_code=404, detail="Song not found in user library")
     if not url:
         url = await get_song_url(session, song_id, user_id)
+        if url and in_active_queue:
+            await _update_active_queue_stream_url(session, song_id, user_id, url)
     if not url:
         logger.warning("[Audio] No URL for song_id=%d user_id=%s — returning 404", song_id, user_id)
         if user_id:
@@ -152,6 +155,52 @@ async def _get_active_queue_stream_url(session: AsyncSession, song_id: int, user
     if url:
         logger.info("[Audio] Queue URL HIT for song_id=%d user_id=%s", song_id, user_id)
     return url
+
+
+async def _song_in_user_active_queue(session: AsyncSession, song_id: int, user_id: int | None) -> bool:
+    if not user_id:
+        return False
+    from ..models.dj_session import DJSession
+    from ..models.queue_item import QueueItem
+
+    result = await session.execute(
+        select(QueueItem.id)
+        .join(DJSession, QueueItem.session_id == DJSession.id)
+        .where(
+            DJSession.user_id == user_id,
+            DJSession.status.in_(["ready", "playing", "refilling"]),
+            QueueItem.song_id == song_id,
+            QueueItem.item_type == "song",
+        )
+        .order_by(DJSession.created_at.desc(), QueueItem.position)
+        .limit(1)
+    )
+    return result.scalar() is not None
+
+
+async def _update_active_queue_stream_url(session: AsyncSession, song_id: int, user_id: int, url: str):
+    from ..models.dj_session import DJSession
+    from ..models.queue_item import QueueItem
+
+    result = await session.execute(
+        select(QueueItem)
+        .join(DJSession, QueueItem.session_id == DJSession.id)
+        .where(
+            DJSession.user_id == user_id,
+            DJSession.status.in_(["ready", "playing", "refilling"]),
+            QueueItem.song_id == song_id,
+            QueueItem.item_type == "song",
+        )
+        .order_by(DJSession.created_at.desc(), QueueItem.position)
+        .limit(1)
+    )
+    qi = result.scalar()
+    if not qi:
+        return
+    qi.stream_url = url
+    qi.status = "ready"
+    qi.error_message = None
+    await session.commit()
 
 
 async def _song_in_user_library(session: AsyncSession, song_id: int, user_id: int) -> bool:
