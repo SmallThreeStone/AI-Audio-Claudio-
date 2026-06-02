@@ -16,7 +16,7 @@ export default function UpNext({ onSkipTo }: { onSkipTo: (queueItemId: number) =
   return (
     <div className="w-full max-w-md">
       <p className="text-[10px] font-semibold text-[var(--color-radio-muted)] uppercase tracking-wider mb-2">
-        Up Next
+        即将播放
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
         {upcoming.slice(0, 3).map((item) => (

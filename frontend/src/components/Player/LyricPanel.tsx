@@ -84,12 +84,10 @@ export default function LyricPanel() {
   // Loading state
   if (lyricLoading) {
     return (
-      <div className="lyric-panel text-center flex items-center justify-center">
-        <div className="space-y-3 w-full">
-          <div className="h-3 bg-white/10 rounded animate-pulse mx-auto w-3/4" />
-          <div className="h-3 bg-white/10 rounded animate-pulse mx-auto w-1/2" />
-          <div className="h-3 bg-white/10 rounded animate-pulse mx-auto w-2/3" />
-          <div className="h-3 bg-white/10 rounded animate-pulse mx-auto w-3/4" />
+      <div className="lyric-panel lyric-panel--loading">
+        <div>
+          <span />
+          <p>歌词加载中</p>
         </div>
       </div>
     )

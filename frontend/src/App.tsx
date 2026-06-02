@@ -217,9 +217,9 @@ function MainApp() {
               <div className="console-panel console-panel--dj" data-onboarding="chat">
                 <div className="console-panel__header">
                   <div>
-                    <span className="console-kicker">DJ 0430</span>
-                    <h2>iRadio 控制台</h2>
-                    <p>把此刻心情翻译成一段电台</p>
+                    <span className="console-kicker">AI DJ 工作台</span>
+                    <h2>心情点播</h2>
+                    <p>告诉我此刻想听什么</p>
                   </div>
                   <div className="signal-orb" />
                 </div>

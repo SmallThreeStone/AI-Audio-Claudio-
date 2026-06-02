@@ -139,7 +139,6 @@ body::before {
 
 .radio-status-pill,
 .radio-user-pill,
-.radio-time-pill,
 .radio-icon-button,
 .radio-text-button {
   min-height: 36px;
@@ -166,13 +165,13 @@ body::before {
 }
 
 .radio-time-pill {
-  min-width: 58px;
-  justify-content: center;
-  padding: 0 12px;
-  color: rgba(238, 252, 248, 0.78);
-  font-size: 13px;
+  min-width: 48px;
+  padding-left: 2px;
+  color: rgba(238, 252, 248, 0.68);
+  font-size: 14px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .radio-onair div {
@@ -435,8 +434,8 @@ body::before {
   }
 
   .radio-time-pill {
-    min-width: 50px;
-    padding: 0 9px;
+    min-width: 44px;
+    padding-left: 0;
     font-size: 12px;
   }
 
@@ -466,8 +465,7 @@ body::before {
   }
 
   .radio-time-pill {
-    min-width: 46px;
-    padding: 0 7px;
+    display: none;
   }
 }
 

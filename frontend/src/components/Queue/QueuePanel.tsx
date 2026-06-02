@@ -37,7 +37,7 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
   }
 
   const upcoming = validItems.filter((item) => item.position >= currentIndex)
-  const visible = compact ? upcoming.slice(0, 5) : upcoming.slice(0, 10)
+  const visible = compact ? upcoming : upcoming.slice(0, 10)
 
   return (
     <div className={compact ? 'queue-panel-shell' : 'queue-panel-shell queue-panel-shell--mobile'}>
@@ -51,7 +51,7 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
           </span>
         )}
         <span>
-          {upcoming.length} 项
+          当前及后续 {upcoming.length} 项
         </span>
       </div>
 

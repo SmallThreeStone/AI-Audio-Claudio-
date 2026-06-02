@@ -384,7 +384,7 @@
 }
 
 .queue-scroll--desktop {
-  max-height: calc(100vh - 190px);
+  max-height: calc(100vh - 206px);
 }
 
 .queue-scroll--mobile {
@@ -997,6 +997,38 @@
   width: 100%;
   mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+}
+
+.lyric-panel--loading {
+  display: grid;
+  place-items: center;
+  color: rgba(238, 252, 248, 0.46);
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.lyric-panel--loading > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 246, 210, 0.12);
+  background: rgba(3, 8, 8, 0.42);
+}
+
+.lyric-panel--loading span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-radio-accent);
+  box-shadow: 0 0 14px rgba(24, 246, 210, 0.62);
+  animation: status-breathe 1.2s ease-in-out infinite;
+}
+
+.lyric-panel--loading p {
+  font-size: 12px;
 }
 
 .lyric-list {
