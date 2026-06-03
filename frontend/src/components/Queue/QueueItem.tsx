@@ -4,7 +4,9 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
   const isTTS = item.item_type.startsWith('tts')
   const isError = item.status === 'error'
   const ttsLabel = item.item_type === 'tts_intro' ? '开场报幕' : item.item_type === 'tts_outro' ? '收尾' : '过渡串词'
-  const issueLabel = item.error_message?.includes('howler') ? '播放失败，已准备重试' : item.error_message || '播放链接暂不可用'
+  const issueLabel = item.error_message?.includes('howler')
+    ? '播放失败，可能是版权或链接过期，已准备重试'
+    : item.error_message || '播放链接暂不可用，可能需要绑定网易云或换一首'
   const readyLabel = item.item_type === 'song' && item.availability === 'verified'
     ? '可播'
     : item.item_type === 'song' && item.availability === 'deferred'

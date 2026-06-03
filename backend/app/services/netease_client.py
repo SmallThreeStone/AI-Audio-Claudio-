@@ -72,6 +72,12 @@ class NeteaseClient:
             cookies=cookies,
         )
 
+    async def cloudsearch(self, keywords: str, limit: int = 20, offset: int = 0, search_type: int = 1) -> dict:
+        return await self._get(
+            "/cloudsearch",
+            {"keywords": keywords, "limit": limit, "offset": offset, "type": search_type},
+        )
+
     # --- Song ---
     async def song_detail(self, song_ids: list[int], cookies: dict) -> dict:
         return await self._get("/song/detail", {"ids": ",".join(map(str, song_ids))}, cookies=cookies)

@@ -11,6 +11,7 @@ from ..models.song import Song
 from ..models.playlist import Playlist
 from ..models.playlist_song import playlist_song_table
 from ..models.listening_history import ListeningHistory
+from ..services.public_library_service import search_and_attach_songs
 
 logger = logging.getLogger(__name__)
 DJ_PERSONAS = {
@@ -354,9 +355,19 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         query = query.where(Song.id.notin_(excluded))
 
     all_candidates = (await db.execute(query)).scalars().all()
+    external_search_count = 0
 
     if artist_names:
         artist_match_ids = {s.id for s in all_candidates if any(a in (s.artist or "") for a in artist_names)}
+        if user_id and len(artist_match_ids) < 3:
+            for name in artist_names[:2]:
+                fetched = await search_and_attach_songs(db, user_id, name, limit=12)
+                external_search_count += len(fetched)
+            all_library_songs = (await db.execute(library_query)).scalars().all()
+            playlist_context = await _song_playlist_context(db, user_id)
+            playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords)
+            all_candidates = (await db.execute(query)).scalars().all()
+            artist_match_ids = {s.id for s in all_candidates if any(a in (s.artist or "") for a in artist_names)}
         artist_matches = [s for s in all_candidates if s.id in artist_match_ids]
         other_songs = [s for s in all_candidates if s.id not in artist_match_ids]
         artist_matches = _rank_song_candidates(artist_matches, user_request, mood_keywords, recent_song_ids, playlist_context)
@@ -365,6 +376,13 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         if len(songs) < limit:
             songs.extend(other_songs[:limit - len(songs)])
     else:
+        if user_id and len(all_candidates) < 12 and user_request.strip():
+            fetched = await search_and_attach_songs(db, user_id, user_request, limit=12)
+            external_search_count += len(fetched)
+            all_library_songs = (await db.execute(library_query)).scalars().all()
+            playlist_context = await _song_playlist_context(db, user_id)
+            playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords)
+            all_candidates = (await db.execute(query)).scalars().all()
         songs = _select_diverse_candidates(all_candidates, user_request, mood_keywords, recent_song_ids, playlist_context, limit)
 
     if len(songs) < limit and not (artist_names and strict_artist):
@@ -390,6 +408,7 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         "playlist_signal_count": len(playlist_names),
         "strict_artist": bool(artist_names and strict_artist),
         "selected_playlist_names": playlist_names[:3],
+        "external_search_count": external_search_count,
     }
 
     logger.info(

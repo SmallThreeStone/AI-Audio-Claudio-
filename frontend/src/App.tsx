@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useStore } from './store'
 import ErrorBoundary from './components/common/ErrorBoundary'
-import LoginModal from './components/Login/LoginModal'
+import { LoginDialog } from './components/Login/LoginModal'
 import Layout from './components/Layout/Layout'
 import AdminDashboard from './components/Admin/AdminDashboard'
 import InstallPrompt from './components/PWA/InstallPrompt'
@@ -91,6 +91,7 @@ function MainApp() {
   const [offline, setOffline] = useState(!navigator.onLine)
   const [showPlaylists, setShowPlaylists] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
   const [landscapeDismissed, setLandscapeDismissed] = useState(false)
   const ptrStartY = useRef(0)
   const ptrRef = useRef<HTMLDivElement>(null)
@@ -198,14 +199,10 @@ function MainApp() {
 
   return (
     <div className="radio-bg min-h-screen" onTouchStart={handlePtrStart} onTouchMove={handlePtrMove} onTouchEnd={handlePtrEnd}>
-      {!isLoggedIn ? (
-        <div className="min-h-screen flex items-center justify-center">
-          <LoginModal />
-        </div>
-      ) : showAdmin ? (
+      {showAdmin ? (
         adminVerified ? <AdminDashboard /> : <AdminAuthGate onVerify={() => setAdminVerified(true)} />
       ) : (
-        <Layout>
+        <Layout onLogin={() => setShowLogin(true)}>
           {offline && (
             <div className="bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-400 text-xs text-center py-1.5 px-3">
               当前处于离线模式，部分功能不可用
@@ -231,6 +228,14 @@ function MainApp() {
             <section className="radio-console__middle hidden lg:flex">
               <div className="console-panel console-panel--queue">
                 <div className="queue-panel-tools">
+                  {!isLoggedIn && (
+                    <button
+                      onClick={() => setShowLogin(true)}
+                      className="queue-panel-tools__login"
+                    >
+                      绑定网易云
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowPlaylists(!showPlaylists)}
                     data-onboarding="sync"
@@ -277,8 +282,9 @@ function MainApp() {
       <ShortcutHelp />
       <SettingsPanel />
       <InstallPrompt />
-      {isLoggedIn && !showAdmin && <OnboardingOverlay />}
-      {isLoggedIn && !showAdmin && <MobileNav active={mobileTab} onChange={setMobileTab} onAdmin={() => setShowAdmin(true)} />}
+      {!showAdmin && <OnboardingOverlay />}
+      {!showAdmin && <MobileNav active={mobileTab} onChange={setMobileTab} onAdmin={() => setShowAdmin(true)} onLogin={!isLoggedIn ? () => setShowLogin(true) : undefined} />}
+      {showLogin && <LoginDialog onClose={() => setShowLogin(false)} />}
 
       {/* Landscape overlay — prompts user to rotate on short screens */}
       {!landscapeDismissed && (

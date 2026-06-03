@@ -101,6 +101,20 @@ export default function LoginModal() {
   )
 }
 
+export function LoginDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="login-dialog">
+      <div className="login-dialog__backdrop" onClick={onClose} />
+      <div className="login-dialog__panel">
+        <button onClick={onClose} className="login-dialog__close" title="关闭登录">
+          ×
+        </button>
+        <LoginModal />
+      </div>
+    </div>
+  )
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function PhoneLogin({ setUser, onSwitchQr }: { setUser: (user: any) => void; onSwitchQr: () => void }) {
   const [phone, setPhone] = useState('')

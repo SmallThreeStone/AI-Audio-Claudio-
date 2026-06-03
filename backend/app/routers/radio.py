@@ -22,6 +22,7 @@ from ..services.queue_manager import build_queue_from_script, check_refill
 from ..services.weather_service import get_weather_summary, get_weather_structured
 from ..services.greeting_service import build_greeting
 from ..services.calendar_service import get_upcoming_events, build_calendar_summary
+from ..services.public_library_service import search_and_attach_songs
 from ..utils.broadcast import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,16 @@ async def request_radio(body: RadioRequest, req: Request, session: AsyncSession 
     from sqlalchemy import func
     count_result = await session.execute(_user_song_count_query(user_id))
     total = count_result.scalar() or 0
+    if total == 0:
+        await ws_manager.broadcast_to_user(user_id, {
+            "type": "generation_progress",
+            "session_id": None,
+            "stage": "analyzing",
+            "message": "曲库为空，正在网易云搜索可用素材...",
+        })
+        found = await search_and_attach_songs(session, user_id, body.text, limit=18)
+        if found:
+            total = len(found)
     logger.info("[Radio] /request — song_count=%s demo_mode=%s", total, DEMO_MODE if total == 0 else "off")
     if total == 0:
         if DEMO_MODE:

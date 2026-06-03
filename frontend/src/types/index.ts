@@ -72,6 +72,7 @@ export interface AIIntent {
     playlist_signal_count?: number
     strict_artist?: boolean
     selected_playlist_names?: string[]
+    external_search_count?: number
   }
   message: string
 }

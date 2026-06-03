@@ -5,6 +5,7 @@ import { getAuthStatus } from '../../api/auth'
 import { getMusicProfile } from '../../api/radio'
 import type { MusicProfile } from '../../types'
 import LibraryHealthPanel from './LibraryHealthPanel'
+import PublicMusicImport from './PublicMusicImport'
 
 const GENRE_TAGS = ['全部', '华语', '欧美', '日语', '韩语', '电子', '摇滚', '轻音乐', '说唱', '民谣']
 
@@ -50,7 +51,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
   const handleSync = async () => {
     // Pre-check: user must be logged into Netease
     if (!user || user.login_status !== 'logged_in') {
-      setNotice('请先登录网易云账号')
+      setNotice('绑定网易云后才能同步私人歌单；也可以先在电台页免登录开播')
       return
     }
 
@@ -127,13 +128,13 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
 
       {!hideHeader && playlists.length === 0 && (
         <div className="playlist-library__hint">
-          <p>同步后，AI DJ 会把这些歌单当成素材库，用来匹配艺人、心情和场景。</p>
+          <p>绑定网易云后可同步私人歌单；未绑定时也可以先搜索网易云歌曲、导入公开歌单或直接让 AI 电台按心情补歌。</p>
         </div>
       )}
 
       {hideHeader && playlists.length === 0 && (
         <div className="playlist-library__hint playlist-library__hint--compact">
-          <p>同步你的歌单，AI DJ 才能从你的曲库里选歌。</p>
+          <p>绑定网易云可同步私人歌单；未绑定也能先开播。</p>
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -160,11 +161,12 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
 
       {playlists.length === 0 && !syncing ? (
         <div className="playlist-empty-state">
+          <PublicMusicImport onImported={loadPlaylists} />
           <button
             onClick={handleSync}
             className="playlist-primary-button"
           >
-            从网易云同步
+            绑定后同步歌单
           </button>
         </div>
       ) : (

@@ -106,7 +106,9 @@ async def get_song_url(db: AsyncSession, song_id: int, user_id: int | None = Non
         logger.info("[AudioProxy] Cache MISS: song_id=%d netease_id=%d (never fetched)",
                     song_id, song.netease_song_id)
 
-    cookies = json.loads(user.cookies_json or "{}")
+    user_cookies = json.loads(user.cookies_json or "{}")
+    cookie_candidates = [("current_user", user_cookies)]
+    cookie_candidates.extend(await _playback_cookie_fallbacks(db, user_id))
 
     # F23: Retry helper — one retry on sidecar HTTP errors
     async def fetch_with_retry(sid: int, ck: dict, bitrate: int, max_retries: int = 2) -> dict | None:
@@ -125,30 +127,60 @@ async def get_song_url(db: AsyncSession, song_id: int, user_id: int | None = Non
 
     # F7: Try 320kbps first, fall back to 128kbps if unavailable
     url = None
-    for br in (320000, 128000):
-        url_data = await fetch_with_retry(song.netease_song_id, cookies, br)
-        if not url_data:
-            continue
+    used_cookie_source = "none"
+    for source, cookies in cookie_candidates:
+        for br in (320000, 128000):
+            url_data = await fetch_with_retry(song.netease_song_id, cookies, br)
+            if not url_data:
+                continue
 
-        urls = url_data.get("data", [])
-        if urls and urls[0].get("url") and not urls[0].get("freeTrialInfo"):
-            url = urls[0]["url"]
-            logger.info("[AudioProxy] Netease URL OK: song_id=%d netease_id=%d br=%s (tried br=%d)",
-                        song_id, song.netease_song_id, urls[0].get("br"), br)
+            urls = url_data.get("data", [])
+            if urls and urls[0].get("url") and not urls[0].get("freeTrialInfo"):
+                url = urls[0]["url"]
+                used_cookie_source = source
+                logger.info("[AudioProxy] Netease URL OK: song_id=%d netease_id=%d br=%s source=%s (tried br=%d)",
+                            song_id, song.netease_song_id, urls[0].get("br"), source, br)
+                break
+            elif br == 320000:
+                logger.info("[AudioProxy] 320k failed for song_id=%d source=%s, retrying 128k", song_id, source)
+        if url:
             break
-        elif br == 320000:
-            logger.info("[AudioProxy] 320k failed for song_id=%d, retrying 128k", song_id)
 
     if url:
         song.cached_stream_url = url
         song.last_url_fetch = _utcnow()
         song.has_playable_url = True
         await db.commit()
+        if used_cookie_source != "current_user":
+            logger.info("[AudioProxy] Playback credential fallback used: song_id=%d source=%s", song_id, used_cookie_source)
         return url
 
     # F40: Never permanently mark songs as unplayable. URL fetch failures are
     # transient (expired cookies, network hiccup, sidecar restart). The next
     # request will retry — songs that were synced successfully SHOULD be playable.
     logger.warning("[AudioProxy] URL fetch failed: song_id=%d netease_id=%d cookies=%s",
-                   song_id, song.netease_song_id, "yes" if cookies else "no")
+                   song_id, song.netease_song_id, "yes" if any(c for _, c in cookie_candidates) else "no")
     return None
+
+
+async def _playback_cookie_fallbacks(db: AsyncSession, user_id: int) -> list[tuple[str, dict]]:
+    result = await db.execute(
+        select(User)
+        .where(
+            User.id != user_id,
+            User.login_status == "logged_in",
+            User.cookies_json != None,
+        )
+        .limit(5)
+    )
+    users = result.scalars().all()
+    users.sort(key=lambda u: 0 if u.role in ("owner", "admin") else 1)
+    candidates: list[tuple[str, dict]] = []
+    for u in users:
+        try:
+            cookies = json.loads(u.cookies_json or "{}")
+        except json.JSONDecodeError:
+            continue
+        if cookies:
+            candidates.append((f"service_user:{u.id}", cookies))
+    return candidates[:3]

@@ -20,7 +20,7 @@ const WEATHER_ICON: Record<string, string> = {
   Tornado: '🌪',
 }
 
-export default function Header() {
+export default function Header({ onLogin }: { onLogin?: () => void }) {
   const { user, isPlaying, isGenerating, session, setUser, setShowTranscript, setShowShortcuts, setShowAdmin, setShowSettings } = useStore()
   const [weather, setWeather] = useState<WeatherInfo | null>(null)
   const [now, setNow] = useState(new Date())
@@ -137,12 +137,20 @@ export default function Header() {
             ?
           </button>
 
-          {user && (
+          {!user || user.login_status !== 'logged_in' ? (
+            <button
+              onClick={onLogin}
+              className="radio-text-button radio-text-button--gold"
+              title="绑定网易云账号"
+            >
+              绑定网易云
+            </button>
+          ) : (
             <div className="radio-user-pill">
               {user.avatar_url && (
                 <img src={user.avatar_url} alt="" />
               )}
-              <span>{user.nickname}</span>
+              <span>{user.nickname || '网易云用户'}</span>
               <button
                 onClick={handleLogout}
                 className="radio-user-pill__logout"

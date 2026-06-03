@@ -136,7 +136,8 @@ export default function ChatInput() {
   }
 
   const showIdle = !isGenerating && !isSubmitting
-  const showDemoEntry = demoAvailable && !user && !demoMode
+  const isBound = user?.login_status === 'logged_in'
+  const showDemoEntry = demoAvailable && !isBound && !demoMode
   const promptTitle = promptSource === 'ai' ? 'AI 场景指令' : promptSource === 'context' ? '场景指令' : promptSource === 'loading' ? '正在生成场景指令' : '可直接交给 DJ 的指令'
   const promptHint = promptSource === 'ai' ? '已读取时间、天气和你的曲库偏好' : promptSource === 'context' ? '根据当前场景和曲库生成' : promptSource === 'loading' ? '读取时间、天气和曲库信号' : '先用这些开播，随后会学习你的偏好'
 
@@ -146,7 +147,7 @@ export default function ChatInput() {
       {showDemoEntry && (
         <div className="mb-3 p-3 rounded-xl border border-[var(--color-radio-accent)]/30 bg-[var(--color-radio-accent)]/5 text-center">
           <p className="text-xs text-[var(--color-radio-text)] mb-2">
-            你的曲库还是空的。先体验一下 深空探测 吧
+            可先免登录开播；绑定网易云后会同步你的私人歌单。
           </p>
           <button
             onClick={() => handleSubmit('来一首适合当前心情的歌')}

@@ -57,10 +57,13 @@ export default function AIDispatchPanel({
   const sourceText = meta?.library_total
     ? `全量 ${meta.library_total} 首 → 候选 ${meta.candidate_count || 0} 首`
     : '全量曲库召回'
+  const searchText = meta?.external_search_count
+    ? `网易云补歌 ${meta.external_search_count} 首`
+    : '本地素材优先'
   const playbackCue = failedSongs > 0
-    ? `有 ${failedSongs} 首歌播放链接暂不可用，系统会自动重试或跳过。`
+    ? `有 ${failedSongs} 首歌播放链接暂不可用，可能受版权或登录态影响，系统会自动重试或跳过。`
     : deferredSongs > 0
-      ? `还有 ${deferredSongs} 首歌会在播放前实时取链。`
+      ? `还有 ${deferredSongs} 首歌会在播放前实时取链；未绑定时会优先尝试公开播放凭证。`
       : ''
   const cue = isGenerating
     ? generationMessage || 'AI DJ 正在理解你的请求'
@@ -76,6 +79,7 @@ export default function AIDispatchPanel({
         <div className="ai-dispatch__summary-stats">
           <em>{stage}</em>
           <em>{sourceText}</em>
+          <em>{searchText}</em>
           <em>{verifiedSongs}/{songCount || 0} 可播</em>
           <em>{confidenceLabel(intent?.confidence)}</em>
         </div>
@@ -108,6 +112,10 @@ export default function AIDispatchPanel({
             <div>
               <span>播放链接</span>
               <strong>{verifiedSongs} 已验证{deferredSongs > 0 ? ` · ${deferredSongs} 待取` : ''}</strong>
+            </div>
+            <div>
+              <span>外部补歌</span>
+              <strong>{meta?.external_search_count ? `网易云搜索补入 ${meta.external_search_count} 首` : '优先使用已有素材'}</strong>
             </div>
             <div>
               <span>避重策略</span>

@@ -6,6 +6,7 @@ interface Props {
   active: MobileTab
   onChange: (tab: MobileTab) => void
   onAdmin?: () => void
+  onLogin?: () => void
 }
 
 const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
@@ -40,7 +41,7 @@ const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
 
 const TAB_ORDER: MobileTab[] = ['radio', 'playlists', 'profile']
 
-export default function MobileNav({ active, onChange, onAdmin }: Props) {
+export default function MobileNav({ active, onChange, onAdmin, onLogin }: Props) {
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
 
@@ -98,6 +99,17 @@ export default function MobileNav({ active, onChange, onAdmin }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M6 7v10a2 2 0 002 2h8a2 2 0 002-2V7M9 11h6" />
             </svg>
             <span className="text-[10px] leading-none">管理</span>
+          </button>
+        )}
+        {onLogin && (
+          <button
+            onClick={onLogin}
+            className="flex flex-col items-center justify-center gap-0.5 w-full h-full text-[var(--color-radio-gold)] transition-colors active:scale-95"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l3 3m0 0l-3 3m3-3H3" />
+            </svg>
+            <span className="text-[10px] leading-none">绑定</span>
           </button>
         )}
       </div>
