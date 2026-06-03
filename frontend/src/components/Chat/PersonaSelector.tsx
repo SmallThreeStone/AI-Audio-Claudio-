@@ -21,10 +21,12 @@ export default function PersonaSelector() {
       <button
         onClick={() => setOpen(!open)}
         disabled={isGenerating}
-        className="flex items-center gap-1.5 text-xs text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors disabled:opacity-50"
+        className="persona-trigger"
+        title={`当前主持: ${current?.name || 'DJ'}`}
       >
         <span className="text-sm">{current?.emoji || '🎵'}</span>
-        <span>{current?.name || 'DJ'}</span>
+        <span>当前主持</span>
+        <strong>{current?.name || 'DJ'}</strong>
         <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>

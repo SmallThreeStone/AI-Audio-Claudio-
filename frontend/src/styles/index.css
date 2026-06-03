@@ -165,13 +165,28 @@ body::before {
 }
 
 .radio-time-pill {
-  min-width: 48px;
-  padding-left: 2px;
-  color: rgba(238, 252, 248, 0.68);
-  font-size: 14px;
-  font-weight: 800;
+  min-height: 36px;
+  min-width: 64px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 0 10px;
+  border: 1px solid rgba(24, 246, 210, 0.12);
+  border-radius: 8px;
+  background: rgba(10, 21, 21, 0.6);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.radio-time-pill span {
+  color: rgba(238, 252, 248, 0.36);
+  font-size: 9px;
+}
+
+.radio-time-pill strong {
+  color: rgba(238, 252, 248, 0.76);
+  font-size: 14px;
+  font-weight: 900;
 }
 
 .radio-onair div {
@@ -434,8 +449,16 @@ body::before {
   }
 
   .radio-time-pill {
-    min-width: 44px;
-    padding-left: 0;
+    min-height: 34px;
+    min-width: 54px;
+    padding-inline: 8px;
+  }
+
+  .radio-time-pill span {
+    display: none;
+  }
+
+  .radio-time-pill strong {
     font-size: 12px;
   }
 

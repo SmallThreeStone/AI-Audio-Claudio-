@@ -277,7 +277,7 @@ function MainApp() {
       <SettingsPanel />
       <InstallPrompt />
       {isLoggedIn && !showAdmin && <OnboardingOverlay />}
-      {isLoggedIn && !showAdmin && <MobileNav active={mobileTab} onChange={setMobileTab} userRole={user?.role} onAdmin={() => setShowAdmin(true)} />}
+      {isLoggedIn && !showAdmin && <MobileNav active={mobileTab} onChange={setMobileTab} onAdmin={() => setShowAdmin(true)} />}
 
       {/* Landscape overlay — prompts user to rotate on short screens */}
       {!landscapeDismissed && (

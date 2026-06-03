@@ -94,7 +94,8 @@ export default function Header() {
           </div>
 
           <div className="radio-time-pill" title="本地时间">
-            {timeLabel}
+            <span>本地</span>
+            <strong>{timeLabel}</strong>
           </div>
 
           {session && (
@@ -107,7 +108,7 @@ export default function Header() {
             </button>
           )}
 
-          {(user?.role === 'admin' || user?.role === 'owner') && (
+          {user && (
             <button
               onClick={() => setShowAdmin(true)}
               className="radio-text-button radio-text-button--gold"

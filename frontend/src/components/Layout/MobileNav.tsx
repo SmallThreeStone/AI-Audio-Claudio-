@@ -5,7 +5,6 @@ export type MobileTab = 'radio' | 'playlists' | 'profile'
 interface Props {
   active: MobileTab
   onChange: (tab: MobileTab) => void
-  userRole?: string
   onAdmin?: () => void
 }
 
@@ -41,7 +40,7 @@ const TABS: { key: MobileTab; label: string; icon: ReactNode }[] = [
 
 const TAB_ORDER: MobileTab[] = ['radio', 'playlists', 'profile']
 
-export default function MobileNav({ active, onChange, userRole, onAdmin }: Props) {
+export default function MobileNav({ active, onChange, onAdmin }: Props) {
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
 
@@ -90,7 +89,7 @@ export default function MobileNav({ active, onChange, userRole, onAdmin }: Props
             </button>
           )
         })}
-        {(userRole === 'admin' || userRole === 'owner') && (
+        {onAdmin && (
           <button
             onClick={onAdmin}
             className="flex flex-col items-center justify-center gap-0.5 w-full h-full text-[var(--color-radio-muted)] transition-colors active:scale-95"

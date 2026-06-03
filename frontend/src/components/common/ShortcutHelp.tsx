@@ -18,25 +18,27 @@ export default function ShortcutHelp() {
     <>
       <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setShowShortcuts(false)} />
       <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-        <div className="bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-2xl p-6 w-80 max-w-full shadow-2xl fade-scale-in">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold">键盘快捷键</h2>
+        <div className="shortcut-modal fade-scale-in">
+          <div className="shortcut-modal__head">
+            <div>
+              <span>快速操作</span>
+              <h2>键盘快捷键</h2>
+            </div>
             <button
               onClick={() => setShowShortcuts(false)}
-              className="p-1 hover:bg-[var(--color-radio-surface)] rounded-lg transition-colors"
+              className="shortcut-modal__close"
+              aria-label="关闭快捷键说明"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="shortcut-list">
             {SHORTCUTS.map((s) => (
-              <div key={s.key} className="flex items-center justify-between text-sm">
-                <kbd className="px-2 py-1 text-xs rounded bg-[var(--color-radio-surface)] border border-[var(--color-radio-border)] min-w-[40px] text-center">
-                  {s.key}
-                </kbd>
-                <span className="text-[var(--color-radio-muted)]">{s.label}</span>
+              <div key={s.key} className="shortcut-row">
+                <kbd>{s.key}</kbd>
+                <span>{s.label}</span>
               </div>
             ))}
           </div>
