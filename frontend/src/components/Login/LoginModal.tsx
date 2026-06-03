@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../../store'
 import { sendCaptcha, phoneLogin as phoneLoginApi } from '../../api/auth'
-import { startQrLogin, checkQrStatus } from '../../api/auth'
+import { startQrLogin, checkQrStatus, getAuthStatus } from '../../api/auth'
 import { trackEvent } from '../../api/analytics'
 
 type LoginTab = 'phone' | 'qr'
@@ -334,7 +334,19 @@ function QrLogin({
           if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
           statusKeyRef.current = null
         } else {
-          setStatusText('正在确认扫码结果...')
+          setStatusText('正在确认扫码结果，请稍候...')
+          getAuthStatus().then((status) => {
+            if (status.logged_in) {
+              setUser({
+                id: status.user_id || 0,
+                client_id: status.client_id,
+                nickname: status.nickname,
+                avatar_url: status.avatar_url,
+                login_status: 'logged_in',
+                role: (status.role as 'admin' | 'user') || 'user',
+              })
+            }
+          }).catch(() => {})
         }
         break
       case 801:
