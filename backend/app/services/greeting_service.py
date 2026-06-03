@@ -276,7 +276,6 @@ async def _generate_ai_prompts(scene_context: dict) -> list[str]:
         )
         text = resp.choices[0].message.content
         if text:
-            import json
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
