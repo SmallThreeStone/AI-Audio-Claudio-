@@ -7,7 +7,8 @@ import { trackEvent } from '../../api/analytics'
 type LoginTab = 'phone' | 'qr'
 type LoginMode = 'captcha' | 'password'
 const QR_LOGIN_CACHE_KEY = 'claudio_qr_login'
-const QR_TTL_MS = 4 * 60 * 1000
+const QR_TTL_MS = 2.5 * 60 * 1000
+const QR_HARD_EXPIRE_GRACE_MS = 20 * 1000
 
 type CachedQrLogin = {
   key: string
@@ -284,6 +285,7 @@ function QrLogin({
   const [nowTick, setNowTick] = useState(Date.now())
   const pollingRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const statusKeyRef = useRef<string | null>(null)
+  const expiresAtRef = useRef<number | null>(null)
 
   useEffect(() => {
     startLogin(false)
@@ -294,6 +296,7 @@ function QrLogin({
 
   useEffect(() => {
     if (!expiresAt) return
+    expiresAtRef.current = expiresAt
     const t = setInterval(() => setNowTick(Date.now()), 1000)
     return () => clearInterval(t)
   }, [expiresAt])
@@ -301,21 +304,38 @@ function QrLogin({
   useEffect(() => {
     const handleVisibility = () => {
       const key = statusKeyRef.current
+      if (document.visibilityState === 'hidden') {
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
+        return
+      }
       if (document.visibilityState === 'visible' && key) {
+        setNowTick(Date.now())
+        if (!isQrHardExpired()) setStatusText('正在确认扫码结果...')
         checkOnce(key).catch(() => {})
+        if (!pollingRef.current && !isQrHardExpired()) doPoll(key)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
+  const isQrHardExpired = () => {
+    return !!expiresAtRef.current && Date.now() > expiresAtRef.current + QR_HARD_EXPIRE_GRACE_MS
+  }
+
   const applyQrResult = async (result: Awaited<ReturnType<typeof checkQrStatus>>) => {
     switch (result.code) {
       case 800:
-        setStatusText('二维码已过期，请点击刷新')
-        clearCachedQrLogin()
-        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
-        statusKeyRef.current = null
+        if (isQrHardExpired()) {
+          setStatusText('二维码已过期，请点击刷新')
+          clearCachedQrLogin()
+          setExpiresAt(null)
+          expiresAtRef.current = null
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
+          statusKeyRef.current = null
+        } else {
+          setStatusText('正在确认扫码结果...')
+        }
         break
       case 801:
         setStatusText('等待扫码中...')
@@ -380,7 +400,9 @@ function QrLogin({
       const cached = readCachedQrLogin()
       if (cached) {
         setQrInfo(cached.key, cached.url)
-        setExpiresAt(cached.createdAt + QR_TTL_MS)
+        const cachedExpiresAt = cached.createdAt + QR_TTL_MS
+        setExpiresAt(cachedExpiresAt)
+        expiresAtRef.current = cachedExpiresAt
         setStatusText('二维码已锁定，请用网易云音乐扫码或从相册识别')
         doPoll(cached.key)
         return
@@ -389,6 +411,7 @@ function QrLogin({
       clearCachedQrLogin()
       clearQrInfo()
       setExpiresAt(null)
+      expiresAtRef.current = null
     }
     setIsLoading(true)
     setStatusText('正在获取二维码...')
@@ -397,12 +420,15 @@ function QrLogin({
       trackEvent('login_start', { method: 'qr' })
       setQrInfo(qr_key, qr_url)
       cacheQrLogin(qr_key, qr_url)
-      setExpiresAt(Date.now() + QR_TTL_MS)
+      const nextExpiresAt = Date.now() + QR_TTL_MS
+      setExpiresAt(nextExpiresAt)
+      expiresAtRef.current = nextExpiresAt
       setStatusText('二维码已锁定，请用网易云音乐扫码或从相册识别')
       doPoll(qr_key)
     } catch {
       clearCachedQrLogin()
       setExpiresAt(null)
+      expiresAtRef.current = null
       setStatusText('获取二维码失败，请确保后端服务已启动')
     }
     setIsLoading(false)
