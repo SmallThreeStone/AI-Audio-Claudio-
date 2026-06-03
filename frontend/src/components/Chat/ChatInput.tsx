@@ -27,8 +27,9 @@ export default function ChatInput() {
   const [greeting, setGreeting] = useState<string | null>(null)
   const [suggestedMood, setSuggestedMood] = useState<string | null>(null)
   const [personalizedPrompts, setPersonalizedPrompts] = useState<string[]>([])
-  const [promptSource, setPromptSource] = useState<'ai' | 'context' | 'static'>('static')
+  const [promptSource, setPromptSource] = useState<'ai' | 'context' | 'static' | 'loading'>('loading')
   const [contextBadges, setContextBadges] = useState<string[]>([])
+  const [promptsLoaded, setPromptsLoaded] = useState(false)
   const [demoAvailable, setDemoAvailable] = useState(false)
   const [showAdjust, setShowAdjust] = useState(false)
   const [adjustMoodText, setAdjustMoodText] = useState('')
@@ -47,8 +48,18 @@ export default function ChatInput() {
         // Prefer AI-generated prompts over template ones
         if (g.ai_prompts?.length) setPersonalizedPrompts(g.ai_prompts)
         else if (g.personalized_prompts?.length) setPersonalizedPrompts(g.personalized_prompts)
+        else {
+          setPersonalizedPrompts(QUICK_PROMPTS)
+          setPromptSource('static')
+        }
+        setPromptsLoaded(true)
       })
-      .catch((e) => { console.warn('Greeting fetch failed:', e) })
+      .catch((e) => {
+        console.warn('Greeting fetch failed:', e)
+        setPersonalizedPrompts(QUICK_PROMPTS)
+        setPromptSource('static')
+        setPromptsLoaded(true)
+      })
     getDemoStatus()
       .then((d) => { if (d.demo_available) setDemoAvailable(true) })
       .catch(() => {})
@@ -126,9 +137,8 @@ export default function ChatInput() {
 
   const showIdle = !isGenerating && !isSubmitting
   const showDemoEntry = demoAvailable && !user && !demoMode
-  const visiblePrompts = personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS
-  const promptTitle = promptSource === 'ai' ? 'AI 场景指令' : promptSource === 'context' ? '场景指令' : '可直接交给 DJ 的指令'
-  const promptHint = promptSource === 'ai' ? '已读取时间、天气和你的曲库偏好' : promptSource === 'context' ? '根据当前场景和曲库生成' : '先用这些开播，随后会学习你的偏好'
+  const promptTitle = promptSource === 'ai' ? 'AI 场景指令' : promptSource === 'context' ? '场景指令' : promptSource === 'loading' ? '正在生成场景指令' : '可直接交给 DJ 的指令'
+  const promptHint = promptSource === 'ai' ? '已读取时间、天气和你的曲库偏好' : promptSource === 'context' ? '根据当前场景和曲库生成' : promptSource === 'loading' ? '读取时间、天气和曲库信号' : '先用这些开播，随后会学习你的偏好'
 
   return (
     <div className="dj-console-input">
@@ -245,7 +255,7 @@ export default function ChatInput() {
 
       {/* Quick prompts — personalized when available */}
       {showIdle && (
-        <div className="signal-suggestion-block">
+        <div className={`signal-suggestion-block ${promptsLoaded ? '' : 'signal-suggestion-block--loading'}`}>
           <div className="signal-suggestion-title">
             <span />
             <div>
@@ -260,17 +270,25 @@ export default function ChatInput() {
               ))}
             </div>
           )}
-          <div className="signal-chip-row">
-            {visiblePrompts.map((prompt) => (
-              <button
-                key={prompt}
-                onClick={() => handleSubmit(prompt)}
-                className="signal-chip"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
+          {promptsLoaded ? (
+            <div className="signal-chip-row">
+              {personalizedPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => handleSubmit(prompt)}
+                  className="signal-chip"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="signal-loading-row" aria-label="正在生成场景指令">
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
         </div>
       )}
     </div>
