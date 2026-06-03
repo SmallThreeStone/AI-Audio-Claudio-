@@ -6,6 +6,38 @@ import { trackEvent } from '../../api/analytics'
 
 type LoginTab = 'phone' | 'qr'
 type LoginMode = 'captcha' | 'password'
+const QR_LOGIN_CACHE_KEY = 'claudio_qr_login'
+const QR_TTL_MS = 4 * 60 * 1000
+
+type CachedQrLogin = {
+  key: string
+  url: string
+  createdAt: number
+}
+
+function readCachedQrLogin(): CachedQrLogin | null {
+  try {
+    const raw = localStorage.getItem(QR_LOGIN_CACHE_KEY)
+    if (!raw) return null
+    const cached = JSON.parse(raw) as CachedQrLogin
+    if (!cached.key || !cached.url || Date.now() - cached.createdAt > QR_TTL_MS) {
+      localStorage.removeItem(QR_LOGIN_CACHE_KEY)
+      return null
+    }
+    return cached
+  } catch {
+    localStorage.removeItem(QR_LOGIN_CACHE_KEY)
+    return null
+  }
+}
+
+function cacheQrLogin(key: string, url: string) {
+  localStorage.setItem(QR_LOGIN_CACHE_KEY, JSON.stringify({ key, url, createdAt: Date.now() }))
+}
+
+function clearCachedQrLogin() {
+  localStorage.removeItem(QR_LOGIN_CACHE_KEY)
+}
 
 export default function LoginModal() {
   const { setQrInfo, clearQrInfo, setUser } = useStore()
@@ -58,19 +90,24 @@ export default function LoginModal() {
           </button>
         </div>
 
-        {tab === 'phone' ? <PhoneLogin setUser={setUser} /> : <QrLogin setQrInfo={setQrInfo} clearQrInfo={clearQrInfo} setUser={setUser} />}
+        {tab === 'phone' ? (
+          <PhoneLogin setUser={setUser} onSwitchQr={() => setTab('qr')} />
+        ) : (
+          <QrLogin setQrInfo={setQrInfo} clearQrInfo={clearQrInfo} setUser={setUser} />
+        )}
       </section>
     </div>
   )
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function PhoneLogin({ setUser }: { setUser: (user: any) => void }) {
+function PhoneLogin({ setUser, onSwitchQr }: { setUser: (user: any) => void; onSwitchQr: () => void }) {
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [captcha, setCaptcha] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showQrFallback, setShowQrFallback] = useState(false)
   const [mode, setMode] = useState<LoginMode>('captcha')
   const [countdown, setCountdown] = useState(0)
 
@@ -132,9 +169,11 @@ function PhoneLogin({ setUser }: { setUser: (user: any) => void }) {
           role: (result.role as 'admin' | 'user') || 'user',
         })
       } else {
+        setShowQrFallback(isRiskMessage(result.message || ''))
         setError(result.message || '登录失败')
       }
     } catch {
+      setShowQrFallback(false)
       setError('网络异常，请检查后端服务是否启动')
     }
     setLoading(false)
@@ -195,6 +234,20 @@ function PhoneLogin({ setUser }: { setUser: (user: any) => void }) {
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
+      {showQrFallback && (
+        <button
+          type="button"
+          onClick={onSwitchQr}
+          className="login-secondary-button"
+        >
+          改用稳定扫码登录
+        </button>
+      )}
+
+      <p className="login-helper-note">
+        手机端优先使用验证码登录；如果网易云提示环境风险，切到扫码登录更稳。
+      </p>
+
       <button
         type="submit"
         disabled={loading}
@@ -205,7 +258,7 @@ function PhoneLogin({ setUser }: { setUser: (user: any) => void }) {
 
       <button
         type="button"
-        onClick={() => { setMode(mode === 'captcha' ? 'password' : 'captcha'); setError('') }}
+        onClick={() => { setMode(mode === 'captcha' ? 'password' : 'captcha'); setError(''); setShowQrFallback(false) }}
         className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)]"
       >
         {mode === 'captcha' ? '使用密码登录' : '使用验证码登录'}
@@ -227,59 +280,93 @@ function QrLogin({
   const { qrKey, qrUrl } = useStore()
   const [statusText, setStatusText] = useState('加载中...')
   const [isLoading, setIsLoading] = useState(false)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(Date.now())
   const pollingRef = useRef<ReturnType<typeof setInterval>>(undefined)
+  const statusKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    startLogin()
+    startLogin(false)
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current)
     }
   }, [])
 
+  useEffect(() => {
+    if (!expiresAt) return
+    const t = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [expiresAt])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      const key = statusKeyRef.current
+      if (document.visibilityState === 'visible' && key) {
+        checkOnce(key).catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
+
+  const applyQrResult = async (result: Awaited<ReturnType<typeof checkQrStatus>>) => {
+    switch (result.code) {
+      case 800:
+        setStatusText('二维码已过期，请点击刷新')
+        clearCachedQrLogin()
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
+        statusKeyRef.current = null
+        break
+      case 801:
+        setStatusText('等待扫码中...')
+        break
+      case 802:
+        setStatusText('请在手机上确认登录')
+        break
+      case 803:
+        trackEvent('login_success', { method: 'qr' })
+        setStatusText(result.auto_sync ? '登录成功，正在扫描你的星系...' : '登录成功！')
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
+        statusKeyRef.current = null
+        clearCachedQrLogin()
+        clearQrInfo()
+        setUser({
+          id: result.user_id || 0,
+          client_id: result.client_id,
+          nickname: result.nickname,
+          avatar_url: result.avatar_url,
+          login_status: 'logged_in',
+          role: (result.role as 'admin' | 'user') || 'user',
+        })
+        if (result.auto_sync) {
+          import('../../api/playlists').then(({ syncPlaylists }) => {
+            syncPlaylists().then(() => {
+              import('../../api/playlists').then(({ getPlaylists }) => {
+                getPlaylists().then((pls) => {
+                  useStore.getState().setPlaylists(pls)
+                }).catch(() => {})
+              })
+            }).catch(() => {})
+          })
+        }
+        break
+    }
+  }
+
+  const checkOnce = async (key: string) => {
+    const result = await checkQrStatus(key)
+    await applyQrResult(result)
+  }
+
   const doPoll = (key: string) => {
     if (pollingRef.current) clearInterval(pollingRef.current)
+    statusKeyRef.current = key
     let consecutiveErrors = 0
     pollingRef.current = setInterval(async () => {
       try {
         const result = await checkQrStatus(key)
         consecutiveErrors = 0
-        switch (result.code) {
-          case 800:
-            setStatusText('二维码已过期，请点击刷新')
-            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
-            break
-          case 801:
-            setStatusText('等待扫码中...')
-            break
-          case 802:
-            setStatusText('请在手机上确认登录')
-            break
-          case 803:
-            trackEvent('login_success', { method: 'qr' })
-            setStatusText(result.auto_sync ? '登录成功，正在扫描你的星系...' : '登录成功！')
-            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
-            clearQrInfo()
-            setUser({
-              id: result.user_id || 0,
-              client_id: result.client_id,
-              nickname: result.nickname,
-              avatar_url: result.avatar_url,
-              login_status: 'logged_in',
-              role: (result.role as 'admin' | 'user') || 'user',
-            })
-            if (result.auto_sync) {
-              import('../../api/playlists').then(({ syncPlaylists }) => {
-                syncPlaylists().then(() => {
-                  import('../../api/playlists').then(({ getPlaylists }) => {
-                    getPlaylists().then((pls) => {
-                      useStore.getState().setPlaylists(pls)
-                    }).catch(() => {})
-                  })
-                }).catch(() => {})
-              })
-            }
-            break
-        }
+        await applyQrResult(result)
       } catch {
         consecutiveErrors++
         if (consecutiveErrors >= 5) setStatusText('网络异常，正在重试...')
@@ -287,20 +374,41 @@ function QrLogin({
     }, 2000)
   }
 
-  const startLogin = async () => {
+  const startLogin = async (forceRefresh = true) => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = undefined }
+    if (!forceRefresh) {
+      const cached = readCachedQrLogin()
+      if (cached) {
+        setQrInfo(cached.key, cached.url)
+        setExpiresAt(cached.createdAt + QR_TTL_MS)
+        setStatusText('二维码已锁定，请用网易云音乐扫码或从相册识别')
+        doPoll(cached.key)
+        return
+      }
+    } else {
+      clearCachedQrLogin()
+      clearQrInfo()
+      setExpiresAt(null)
+    }
     setIsLoading(true)
     setStatusText('正在获取二维码...')
     try {
       const { qr_key, qr_url } = await startQrLogin()
       trackEvent('login_start', { method: 'qr' })
       setQrInfo(qr_key, qr_url)
-      setStatusText('请使用网易云音乐 APP 扫码登录')
+      cacheQrLogin(qr_key, qr_url)
+      setExpiresAt(Date.now() + QR_TTL_MS)
+      setStatusText('二维码已锁定，请用网易云音乐扫码或从相册识别')
       doPoll(qr_key)
     } catch {
+      clearCachedQrLogin()
+      setExpiresAt(null)
       setStatusText('获取二维码失败，请确保后端服务已启动')
     }
     setIsLoading(false)
   }
+
+  const secondsLeft = expiresAt ? Math.max(0, Math.ceil((expiresAt - nowTick) / 1000)) : 0
 
   return (
     <div className="login-form login-form--qr">
@@ -309,18 +417,25 @@ function QrLogin({
           <div className="w-8 h-8 border-2 border-[var(--color-radio-accent)] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : qrUrl ? (
-        <img src={qrUrl} alt="登录二维码" className="w-48 h-48 rounded-lg bg-white p-2" />
+        <div className="login-qr-card">
+          <img src={qrUrl} alt="登录二维码" className="login-qr-image" />
+          {secondsLeft > 0 && <span>{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}</span>}
+        </div>
       ) : null}
 
       <p className="text-sm text-[var(--color-radio-muted)]">{statusText}</p>
 
-      <button onClick={startLogin} className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)]">
+      <button onClick={() => startLogin(true)} className="text-xs text-[var(--color-radio-accent)] hover:text-[var(--color-radio-accent-dim)]">
         刷新二维码
       </button>
 
-      <p className="text-xs text-[var(--color-radio-muted)] text-center">
-        使用网易云音乐手机 APP 扫描二维码登录
+      <p className="login-helper-note text-center">
+        手机截图后去网易云识别图片即可；回到本页时不会自动更换二维码。
       </p>
     </div>
   )
+}
+
+function isRiskMessage(message: string) {
+  return /风险|异常|安全|验证|频繁/.test(message)
 }

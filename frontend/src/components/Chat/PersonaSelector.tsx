@@ -17,7 +17,7 @@ export default function PersonaSelector() {
   if (personas.length === 0) return null
 
   return (
-    <div className="relative">
+    <div className="persona-selector">
       <button
         onClick={() => setOpen(!open)}
         disabled={isGenerating}
@@ -35,7 +35,7 @@ export default function PersonaSelector() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full left-0 mb-2 z-50 w-56 bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl shadow-xl overflow-hidden">
+          <div className="persona-menu">
             {personas.map((p) => (
               <button
                 key={p.id}
@@ -43,15 +43,13 @@ export default function PersonaSelector() {
                   setSelectedPersona(p.id)
                   setOpen(false)
                 }}
-                className={`w-full text-left px-3 py-2.5 hover:bg-[var(--color-radio-surface)] transition-colors ${
-                  p.id === selectedPersona ? 'bg-[var(--color-radio-accent)]/10' : ''
-                }`}
+                className={p.id === selectedPersona ? 'active' : ''}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{p.emoji}</span>
+                <div>
+                  <span>{p.emoji}</span>
                   <div>
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="text-xs text-[var(--color-radio-muted)]">{p.tagline}</p>
+                    <strong>{p.name}</strong>
+                    <p>{p.tagline}</p>
                   </div>
                 </div>
               </button>

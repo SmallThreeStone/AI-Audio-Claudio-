@@ -35,6 +35,41 @@ const eventBadge: Record<string, string> = {
   skipped: 'bg-red-500/20 text-red-400',
 }
 
+const beijingTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+})
+
+const beijingDateFormat = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+})
+
+function parseAdminTime(value?: string | null) {
+  if (!value) return null
+  const normalized = /([zZ]|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatAdminTime(value?: string | null) {
+  const date = parseAdminTime(value)
+  return date ? beijingTimeFormat.format(date) : '-'
+}
+
+function formatAdminDate(value?: string | null) {
+  const date = parseAdminTime(value)
+  return date ? beijingDateFormat.format(date) : '-'
+}
+
 export default function AdminDashboard() {
   const { setShowAdmin, user } = useStore()
   const isOwner = user?.role === 'owner'
@@ -350,7 +385,7 @@ function OverviewPanel({ users, sessions, events, anomalies, analyticsData }: {
         {latestSession ? (
           <>
             <strong>{latestSession.user_request || latestSession.session_theme || '未命名会话'}</strong>
-            <p>{latestSession.user_nickname} · {latestSession.status} · {latestSession.created_at ? new Date(latestSession.created_at).toLocaleString('zh-CN') : '-'}</p>
+            <p>{latestSession.user_nickname} · {latestSession.status} · {formatAdminTime(latestSession.created_at)}</p>
           </>
         ) : (
           <p>暂无会话记录</p>
@@ -361,7 +396,7 @@ function OverviewPanel({ users, sessions, events, anomalies, analyticsData }: {
         {latestEvent ? (
           <>
             <strong>{latestEvent.song_name}</strong>
-            <p>{latestEvent.user_nickname} · {latestEvent.event} · {latestEvent.listened_at ? new Date(latestEvent.listened_at).toLocaleString('zh-CN') : '-'}</p>
+            <p>{latestEvent.user_nickname} · {latestEvent.event} · {formatAdminTime(latestEvent.listened_at)}</p>
           </>
         ) : (
           <p>暂无播放事件</p>
@@ -449,7 +484,7 @@ function UsersTable({ users, isOwner, onSetRole, onViewProfile }: { users: Admin
               <td className="px-4 py-3 text-right text-[var(--color-radio-text)]">{u.session_count}</td>
               <td className="px-4 py-3 text-right text-[var(--color-radio-text)]">{u.listen_count}</td>
               <td className="px-4 py-3 text-right text-[var(--color-radio-muted)] text-xs">
-                {u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '-'}
+                {formatAdminDate(u.created_at)}
               </td>
               {isOwner && (
                 <td className="px-4 py-3 text-right">
@@ -502,7 +537,7 @@ function SessionsTable({ sessions, isOwner, onForceStop }: { sessions: AdminSess
                 {s.played_items}/{s.total_items}
               </td>
               <td className="px-4 py-3 text-right text-[var(--color-radio-muted)] text-xs">
-                {s.created_at ? new Date(s.created_at).toLocaleString('zh-CN') : '-'}
+                {formatAdminTime(s.created_at)}
               </td>
               {isOwner && (
                 <td className="px-4 py-3 text-right">
@@ -554,7 +589,7 @@ function ListeningTable({ events }: { events: AdminListenEvent[] }) {
                 {e.completion_rate != null ? `${Math.round(e.completion_rate * 100)}%` : '-'}
               </td>
               <td className="px-4 py-3 text-right text-[var(--color-radio-muted)] text-xs">
-                {e.listened_at ? new Date(e.listened_at).toLocaleString('zh-CN') : '-'}
+                {formatAdminTime(e.listened_at)}
               </td>
             </tr>
           ))}

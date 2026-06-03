@@ -14,6 +14,27 @@ from ..utils.admin_token import verify_admin_token
 from ..utils.broadcast import ws_manager
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+LOCAL_TZ_OFFSET = "+8 hours"
+
+
+def _local_date_expr(column):
+    return func.date(column, LOCAL_TZ_OFFSET)
+
+
+def _local_hour_expr(column):
+    return func.strftime("%H", column, LOCAL_TZ_OFFSET)
+
+
+def _today_local() -> datetime.date:
+    return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
+
+
+def _iso_utc(value: datetime.datetime | None) -> str | None:
+    if not value:
+        return None
+    if value.tzinfo:
+        return value.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.replace(tzinfo=datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 async def verify_admin(request: Request, session: AsyncSession = Depends(get_session)) -> User:
@@ -53,10 +74,10 @@ async def admin_overview(
         select(func.count()).select_from(User).where(User.login_status == "logged_in")
     )).scalar() or 0
 
-    today = datetime.date.today()
+    today = _today_local()
     sessions_today = (await session.execute(
         select(func.count()).select_from(DJSession).where(
-            func.date(DJSession.created_at) == today.isoformat()
+            _local_date_expr(DJSession.created_at) == today.isoformat()
         )
     )).scalar() or 0
 
@@ -108,8 +129,8 @@ async def list_users(
             "role": u.role,
             "session_count": sess_counts.get(u.id, 0),
             "listen_count": listen_counts.get(u.id, 0),
-            "created_at": u.created_at.isoformat() if u.created_at else None,
-            "updated_at": u.updated_at.isoformat() if u.updated_at else None,
+            "created_at": _iso_utc(u.created_at),
+            "updated_at": _iso_utc(u.updated_at),
         })
     return {"users": user_list}
 
@@ -146,7 +167,7 @@ async def admin_sessions(
                 "persona": s.persona,
                 "total_items": s.total_items,
                 "played_items": s.played_items,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "created_at": _iso_utc(s.created_at),
             }
             for s in sessions
         ]
@@ -159,23 +180,25 @@ async def admin_trends(
     session: AsyncSession = Depends(get_session),
     days: int = 7,
 ):
-    end = datetime.date.today()
+    end = _today_local()
     start = end - datetime.timedelta(days=days - 1)
     dates = [(start + datetime.timedelta(days=i)).isoformat() for i in range(days)]
+    session_day = _local_date_expr(DJSession.created_at)
+    listen_day = _local_date_expr(ListeningHistory.listened_at)
 
     sess_rows = (
         await session.execute(
-            select(func.date(DJSession.created_at), func.count())
-            .where(func.date(DJSession.created_at) >= start.isoformat())
-            .group_by(func.date(DJSession.created_at))
+            select(session_day, func.count())
+            .where(session_day >= start.isoformat())
+            .group_by(session_day)
         )
     ).all()
 
     listen_rows = (
         await session.execute(
-            select(func.date(ListeningHistory.listened_at), func.count())
-            .where(func.date(ListeningHistory.listened_at) >= start.isoformat())
-            .group_by(func.date(ListeningHistory.listened_at))
+            select(listen_day, func.count())
+            .where(listen_day >= start.isoformat())
+            .group_by(listen_day)
         )
     ).all()
 
@@ -197,8 +220,8 @@ async def admin_hourly(
 ):
     rows = (
         await session.execute(
-            select(func.strftime("%H", ListeningHistory.listened_at), func.count())
-            .group_by(func.strftime("%H", ListeningHistory.listened_at))
+            select(_local_hour_expr(ListeningHistory.listened_at), func.count())
+            .group_by(_local_hour_expr(ListeningHistory.listened_at))
         )
     ).all()
 
@@ -242,7 +265,7 @@ async def admin_listening(
                 "song_name": song_map.get(e.song_id, "unknown"),
                 "event": e.event,
                 "completion_rate": e.completion_rate,
-                "listened_at": e.listened_at.isoformat() if e.listened_at else None,
+                "listened_at": _iso_utc(e.listened_at),
             }
             for e in events
         ]
@@ -257,14 +280,14 @@ async def admin_anomalies(
     alerts: list[dict] = []
 
     # 1. Today's copyright failure rate
-    today = datetime.date.today().isoformat()
+    today = _today_local().isoformat()
     today_qi_total = (
         await session.execute(
             select(func.count())
             .select_from(QueueItem)
             .where(
                 QueueItem.item_type == "song",
-                func.date(QueueItem.created_at) == today,
+                _local_date_expr(QueueItem.created_at) == today,
             )
         )
     ).scalar() or 0
@@ -275,7 +298,7 @@ async def admin_anomalies(
             .where(
                 QueueItem.item_type == "song",
                 QueueItem.status == "error",
-                func.date(QueueItem.created_at) == today,
+                _local_date_expr(QueueItem.created_at) == today,
             )
         )
     ).scalar() or 0
@@ -294,7 +317,7 @@ async def admin_anomalies(
     recent_sessions = (
         await session.execute(
             select(DJSession)
-            .where(func.date(DJSession.created_at) >= today)
+            .where(_local_date_expr(DJSession.created_at) >= today)
             .order_by(DJSession.created_at.desc())
             .limit(50)
         )
@@ -410,7 +433,7 @@ async def force_stop_session(
             "total_items": target.total_items,
             "played_items": target.played_items,
             "weather_summary": target.weather_summary,
-            "created_at": target.created_at.isoformat() if target.created_at else None,
+            "created_at": _iso_utc(target.created_at),
         },
         "message": "会话已被管理员强制停止",
     })
@@ -468,11 +491,11 @@ async def view_user_profile(
     # Time of day pattern
     hour_result = await session.execute(
         select(
-            func.cast(func.strftime("%H", ListeningHistory.listened_at), Integer),
+            func.cast(_local_hour_expr(ListeningHistory.listened_at), Integer),
             func.count(),
         )
         .where(ListeningHistory.user_id == user_id, ListeningHistory.event == "started")
-        .group_by(func.strftime("%H", ListeningHistory.listened_at))
+        .group_by(_local_hour_expr(ListeningHistory.listened_at))
     )
     time_patterns = {"morning": 0, "afternoon": 0, "evening": 0, "night": 0}
     for hour, cnt in hour_result.all():
