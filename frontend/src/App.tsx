@@ -241,7 +241,7 @@ function MainApp() {
                     data-onboarding="sync"
                     className={showPlaylists ? 'active' : ''}
                   >
-                    歌单库
+                    找歌
                   </button>
                   <button
                     onClick={() => setShowProfile(!showProfile)}

@@ -6,6 +6,7 @@ import { getMusicProfile } from '../../api/radio'
 import type { MusicProfile } from '../../types'
 import LibraryHealthPanel from './LibraryHealthPanel'
 import PublicMusicImport from './PublicMusicImport'
+import AIMaterialStation from './AIMaterialStation'
 
 const GENRE_TAGS = ['全部', '华语', '欧美', '日语', '韩语', '电子', '摇滚', '轻音乐', '说唱', '民谣']
 
@@ -108,6 +109,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
 
       {playlists.length > 0 && (
         <>
+          <AIMaterialStation onExpanded={loadPlaylists} />
           <LibraryHealthPanel playlists={playlists} profile={profile} compact={hideHeader} />
           <div className="playlist-library__stats">
             <div>
@@ -161,6 +163,7 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
 
       {playlists.length === 0 && !syncing ? (
         <div className="playlist-empty-state">
+          <AIMaterialStation onExpanded={loadPlaylists} />
           <PublicMusicImport onImported={loadPlaylists} />
           <button
             onClick={handleSync}

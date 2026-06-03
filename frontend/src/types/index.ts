@@ -73,6 +73,23 @@ export interface AIIntent {
     strict_artist?: boolean
     selected_playlist_names?: string[]
     external_search_count?: number
+    source_breakdown?: {
+      playlist_material: number
+      search_material: number
+      total_material: number
+    }
+    interpreted_request?: {
+      artists: string[]
+      moods: string[]
+      scenes: string[]
+      energy: 'low' | 'medium' | 'high'
+    }
+    playback_plan?: {
+      arc: string
+      reason: string
+    }
+    replacement_count?: number
+    unplayable_count?: number
   }
   message: string
 }

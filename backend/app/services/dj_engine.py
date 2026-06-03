@@ -120,6 +120,11 @@ async def generate_radio_script(db: AsyncSession, user_request: str, session_id:
         "playlist_signal_count": 0,
         "strict_artist": False,
         "selected_playlist_names": [],
+        "source_breakdown": {"playlist_material": len(demo_songs or []), "search_material": 0, "total_material": len(demo_songs or [])},
+        "interpreted_request": {"artists": [], "moods": [], "scenes": [], "energy": "medium"},
+        "playback_plan": {"arc": "体验模式", "reason": "先用示例歌曲展示 AI 电台编排方式"},
+        "replacement_count": 0,
+        "unplayable_count": 0,
     }
     if demo_songs:
         songs = demo_songs
@@ -409,6 +414,11 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         "strict_artist": bool(artist_names and strict_artist),
         "selected_playlist_names": playlist_names[:3],
         "external_search_count": external_search_count,
+        "source_breakdown": await _source_breakdown(db, user_id),
+        "interpreted_request": _interpreted_request(user_request, artist_names, mood_keywords),
+        "playback_plan": _playback_plan(user_request, artist_names, mood_keywords),
+        "replacement_count": 0,
+        "unplayable_count": len([s for s in all_library_songs if getattr(s, "has_playable_url", False) is False and getattr(s, "last_url_fetch", None) is not None]),
     }
 
     logger.info(
@@ -421,6 +431,53 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         user_request[:40],
     )
     return songs, artist_names, candidate_meta
+
+
+async def _source_breakdown(db: AsyncSession, user_id: int | None) -> dict:
+    if user_id is None:
+        return {"playlist_material": 0, "search_material": 0, "total_material": 0}
+    result = await db.execute(
+        select(Playlist.netease_playlist_id, func.count(func.distinct(playlist_song_table.c.song_id)))
+        .select_from(playlist_song_table)
+        .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+        .where(Playlist.user_id == user_id)
+        .group_by(Playlist.netease_playlist_id)
+    )
+    playlist_material = 0
+    search_material = 0
+    for netease_playlist_id, count in result.all():
+        if netease_playlist_id and netease_playlist_id <= -900000000:
+            search_material += count
+        else:
+            playlist_material += count
+    return {
+        "playlist_material": playlist_material,
+        "search_material": search_material,
+        "total_material": playlist_material + search_material,
+    }
+
+
+def _interpreted_request(user_request: str, artist_names: list[str], mood_keywords: list[str]) -> dict:
+    scenes = [word for word in ["开车", "通勤", "加班", "工作", "下雨", "深夜", "睡前", "运动", "周末"] if word in user_request]
+    energy = "high" if any(word in user_request for word in ["燃", "运动", "节奏", "嗨", "提神"]) else "low" if any(word in user_request for word in ["安静", "睡前", "不吵", "低能量", "治愈"]) else "medium"
+    return {
+        "artists": artist_names,
+        "moods": mood_keywords,
+        "scenes": scenes,
+        "energy": energy,
+    }
+
+
+def _playback_plan(user_request: str, artist_names: list[str], mood_keywords: list[str]) -> dict:
+    if any(word in user_request for word in ["深夜", "睡前", "安静", "不吵"]):
+        return {"arc": "低能量开场 → 轻微升温 → 收回到安静", "reason": "你的描述更适合不打扰的陪伴式编排"}
+    if any(word in user_request for word in ["运动", "燃", "提神", "开车"]):
+        return {"arc": "快速进入节奏 → 中段保持能量 → 结尾留一点余温", "reason": "场景需要更稳定的推进感"}
+    if artist_names:
+        return {"arc": "点名艺人优先 → 相近风格补齐 → DJ 解释缺口", "reason": "先满足明确点名，再用相近素材保证节目完整"}
+    if mood_keywords:
+        return {"arc": "情绪贴合优先 → 风格略扩展 → 避免重复", "reason": "以你的心情词作为主线，兼顾新鲜度"}
+    return {"arc": "画像召回 → 多样化编排 → 逐步校准", "reason": "指令较自由，先按你的曲库画像试探"}
 
 
 async def _recent_song_ids(db: AsyncSession, user_id: int | None, limit: int = 80) -> set[int]:

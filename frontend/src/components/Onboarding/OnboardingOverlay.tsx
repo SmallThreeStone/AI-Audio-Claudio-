@@ -4,8 +4,8 @@ const ONBOARDING_KEY = 'claudio_onboarding_completed_v2'
 
 const STEPS = [
   {
-    title: '先同步歌单库',
-    desc: 'AI DJ 会优先从你的网易云歌单里匹配艺人、心情和场景。',
+    title: '先建立找歌素材',
+    desc: 'AI DJ 会优先从你的素材池里匹配艺人、心情和场景，也可以随时搜索补歌。',
     selector: '[data-onboarding="sync"]',
     position: 'left',
   },

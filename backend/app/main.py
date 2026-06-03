@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from .database import init_db, async_session
 from .models.user import User
-from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar, admin, analytics
+from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar, admin, analytics, ai_material
 from .services.sidecar_manager import sidecar
 from .utils.auth import AuthMiddleware
 
@@ -124,6 +124,7 @@ app.include_router(dlna.router)
 app.include_router(calendar.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
+app.include_router(ai_material.router)
 
 # Middleware order (innermost → outermost): CORS → Auth → RateLimit
 # CORS already added above. AuthMiddleware injects request.state.user_id.

@@ -2,7 +2,7 @@ import datetime
 import json
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, exists
+from sqlalchemy import select, exists, func
 
 from ..models.playlist import Playlist
 from ..models.playlist_song import playlist_song_table
@@ -187,3 +187,94 @@ async def import_public_playlist(db: AsyncSession, user_id: int, url_or_id: str)
         "imported": imported,
         "total": len(tracks),
     }
+
+
+async def expand_ai_material(db: AsyncSession, user_id: int, text: str, limit: int = 12) -> dict:
+    plan = build_material_query(text)
+    before = await _user_song_count(db, user_id)
+    songs = await search_and_attach_songs(db, user_id, plan["query"], limit)
+    after = await _user_song_count(db, user_id)
+    added = max(0, after - before)
+    return {
+        "query": plan["query"],
+        "intent": plan,
+        "found": len(songs),
+        "added": added,
+        "total_material": after,
+        "songs": [
+            {
+                "id": s.id,
+                "netease_song_id": s.netease_song_id,
+                "name": s.name,
+                "artist": s.artist,
+                "album": s.album,
+                "duration_ms": s.duration_ms,
+                "cover_url": s.cover_url,
+            }
+            for s in songs
+        ],
+        "message": _expand_message(plan, len(songs), added),
+    }
+
+
+def build_material_query(text: str) -> dict:
+    raw = text.strip()
+    artist = _artist_hint(raw)
+    moods = _keywords(raw, ["安静", "治愈", "轻快", "燃", "摇滚", "民谣", "电子", "爵士", "深夜", "开车", "工作", "下雨", "雨天", "空间感", "运动", "专注"])
+    scenes = _keywords(raw, ["深夜", "开车", "通勤", "工作", "加班", "下雨", "运动", "睡前", "周末"])
+    energy = "high" if any(w in raw for w in ["燃", "运动", "节奏", "嗨", "提神"]) else "low" if any(w in raw for w in ["安静", "睡前", "不吵", "低能量", "治愈"]) else "medium"
+    query = artist or raw
+    if not artist and moods:
+        query = " ".join(moods[:3])
+    elif not artist and scenes:
+        query = " ".join(scenes[:3])
+    return {
+        "raw_text": raw,
+        "query": query or raw,
+        "artist": artist,
+        "moods": moods,
+        "scenes": scenes,
+        "energy": energy,
+    }
+
+
+def _artist_hint(text: str) -> str | None:
+    patterns = [
+        r"(?:找|搜|补充|来|放|播|听)(?:一?首|点|些|几首)?(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,24})的歌",
+        r"^(?:找|搜|补充)(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,12})(?:，|,|。|\.|；|;|\s)+(?:适合|不要|别|少|多|优先|晚上|深夜|开车|通勤|工作|加班|运动)",
+        r"^(?:找|搜|补充)(?P<artist>[\u4e00-\u9fa5A-Za-z0-9·.\s]{2,8})$",
+    ]
+    non_artist_tokens = ["适合", "不要", "别", "少", "多", "优先", "晚上", "深夜", "开车", "通勤", "工作", "加班", "运动", "下雨", "雨天", "空间感", "专注", "不困", "男声", "女声"]
+    stop_words = {"歌", "歌曲", "音乐", "素材", "一点", "几首", "安静男声", "安静女声"}
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        artist = re.sub(r"(适合|不要|别|少|多|优先|晚上|深夜|开车|通勤|工作|加班|运动).*$", "", match.group("artist")).strip(" ，。,.!！?？")
+        if any(token in artist for token in non_artist_tokens):
+            continue
+        if 2 <= len(artist) <= 20 and artist not in stop_words:
+            return artist
+    return None
+
+
+def _keywords(text: str, words: list[str]) -> list[str]:
+    return [word for word in words if word in text]
+
+
+async def _user_song_count(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(
+        select(func.count(func.distinct(playlist_song_table.c.song_id)))
+        .select_from(playlist_song_table)
+        .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
+        .where(Playlist.user_id == user_id)
+    )
+    return result.scalar() or 0
+
+
+def _expand_message(plan: dict, found: int, added: int) -> str:
+    if found == 0:
+        return f"没有找到「{plan['query']}」的稳定候选，可以换个艺人或场景再试。"
+    subject = plan.get("artist") or plan["query"]
+    scene = f"，偏向{' / '.join(plan['scenes'][:2])}" if plan.get("scenes") else ""
+    return f"已为「{subject}」找到 {found} 首候选，新加入 {added} 首{scene}。"

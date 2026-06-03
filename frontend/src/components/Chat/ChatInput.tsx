@@ -5,6 +5,7 @@ import { trackEvent } from '../../api/analytics'
 import { getClientId } from '../../utils/clientId'
 import PersonaSelector from './PersonaSelector'
 import VoiceInput from './VoiceInput'
+import AIMaterialStation from '../Library/AIMaterialStation'
 
 const QUICK_PROMPTS = [
   '来几首梁博，适合晚上开车',
@@ -19,6 +20,13 @@ const CONTROL_CHIPS = [
   '少说话多放歌',
   '优先我的歌单',
   '不够就补相近风格',
+]
+
+const SCENE_CHANNELS = [
+  { name: '深夜回家', prompt: '深夜回家路上，想听安静但不孤单的歌，节奏别太快' },
+  { name: '工作专注', prompt: '工作专注频道，少人声干扰，稳定、清爽、有推进感' },
+  { name: '雨天慢听', prompt: '下雨天，来点有空间感、温柔、慢一点的歌' },
+  { name: '开车不困', prompt: '开车不困频道，节奏要有精神，但不要太吵' },
 ]
 
 export default function ChatInput() {
@@ -228,6 +236,24 @@ export default function ChatInput() {
           </button>
         ))}
       </div>
+
+      {showIdle && (
+        <div className="scene-channel-strip">
+          <div>
+            <span>AI 场景频道</span>
+            <em>一键把时间、场景和能量交给 DJ 编排</em>
+          </div>
+          <div className="scene-channel-strip__list">
+            {SCENE_CHANNELS.map((channel) => (
+              <button key={channel.name} onClick={() => handleSubmit(channel.prompt)}>
+                {channel.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showIdle && <AIMaterialStation compact />}
 
       {isGenerating && (
         <div className="signal-generation-card">

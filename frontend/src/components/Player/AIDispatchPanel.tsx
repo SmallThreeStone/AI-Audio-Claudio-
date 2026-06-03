@@ -21,6 +21,12 @@ function confidenceLabel(confidence?: string) {
   return '中'
 }
 
+function energyLabel(energy?: string) {
+  if (energy === 'high') return '偏高'
+  if (energy === 'low') return '偏低'
+  return '中等'
+}
+
 export default function AIDispatchPanel({
   session,
   queue,
@@ -39,6 +45,8 @@ export default function AIDispatchPanel({
   const [expanded, setExpanded] = useState(false)
   const intent = session?.ai_intent
   const meta = intent?.candidate_meta
+  const interpreted = meta?.interpreted_request
+  const source = meta?.source_breakdown
   const songCount = queue.filter((item) => item.item_type === 'song').length
   const ttsCount = queue.filter((item) => item.item_type.startsWith('tts')).length
   const readySongs = queue.filter((item) => item.item_type === 'song' && item.status === 'ready').length
@@ -60,6 +68,12 @@ export default function AIDispatchPanel({
   const searchText = meta?.external_search_count
     ? `网易云补歌 ${meta.external_search_count} 首`
     : '本地素材优先'
+  const interpretedSignals = [
+    interpreted?.artists?.length ? `艺人 ${interpreted.artists.join('/')}` : '',
+    interpreted?.scenes?.length ? `场景 ${interpreted.scenes.join('/')}` : '',
+    interpreted?.moods?.length ? `情绪 ${interpreted.moods.join('/')}` : '',
+    interpreted?.energy ? `能量 ${energyLabel(interpreted.energy)}` : '',
+  ].filter(Boolean)
   const playbackCue = failedSongs > 0
     ? `有 ${failedSongs} 首歌播放链接暂不可用，可能受版权或登录态影响，系统会自动重试或跳过。`
     : deferredSongs > 0
@@ -92,6 +106,23 @@ export default function AIDispatchPanel({
             <p>{request}</p>
           </div>
 
+          {interpretedSignals.length > 0 && (
+            <div className="ai-dispatch__explain">
+              <span>AI 理解</span>
+              <div>
+                {interpretedSignals.map((signal) => <em key={signal}>{signal}</em>)}
+              </div>
+            </div>
+          )}
+
+          {source && (
+            <div className="ai-dispatch__source">
+              <div><span>歌单素材</span><strong>{source.playlist_material}</strong></div>
+              <div><span>搜索素材</span><strong>{source.search_material}</strong></div>
+              <div><span>总素材</span><strong>{source.total_material}</strong></div>
+            </div>
+          )}
+
           <div className="ai-dispatch__grid">
             <div>
               <span>理解信号</span>
@@ -118,6 +149,10 @@ export default function AIDispatchPanel({
               <strong>{meta?.external_search_count ? `网易云搜索补入 ${meta.external_search_count} 首` : '优先使用已有素材'}</strong>
             </div>
             <div>
+              <span>播放弧线</span>
+              <strong>{meta?.playback_plan?.arc || '按心情逐步推进'}</strong>
+            </div>
+            <div>
               <span>避重策略</span>
               <strong>{meta?.recently_avoided ? `最近 ${meta.recently_avoided} 首降权` : '自动避开近期播放'}</strong>
             </div>
@@ -134,6 +169,14 @@ export default function AIDispatchPanel({
               <em>{meta.strict_artist ? '艺人锁定' : '语义召回'}</em>
             </div>
           ) : null}
+
+          {meta?.playback_plan?.reason && (
+            <div className="ai-dispatch__artist">
+              <span>编排理由</span>
+              <strong>{meta.playback_plan.reason}</strong>
+              <em>{meta.unplayable_count ? `${meta.unplayable_count} 首曾取链失败会降权` : '可播优先'}</em>
+            </div>
+          )}
 
           {artists.length > 0 && (
             <div className="ai-dispatch__artist">
