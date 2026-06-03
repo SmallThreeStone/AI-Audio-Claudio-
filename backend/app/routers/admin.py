@@ -10,6 +10,7 @@ from ..models.dj_session import DJSession
 from ..models.queue_item import QueueItem
 from ..models.listening_history import ListeningHistory
 from ..models.song import Song
+from ..utils.admin_token import verify_admin_token
 from ..utils.broadcast import ws_manager
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -21,9 +22,11 @@ async def verify_admin(request: Request, session: AsyncSession = Depends(get_ses
         raise HTTPException(status_code=401, detail="Not authenticated")
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar()
-    if not user or user.role not in ("admin", "owner"):
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.role in ("admin", "owner") or verify_admin_token(request.headers.get("X-Admin-Token")):
+        return user
+    raise HTTPException(status_code=403, detail="Admin access required")
 
 
 async def verify_owner(request: Request, session: AsyncSession = Depends(get_session)) -> User:

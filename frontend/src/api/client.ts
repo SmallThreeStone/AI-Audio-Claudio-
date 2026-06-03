@@ -9,6 +9,8 @@ const api = axios.create({
 // Inject X-Client-Id header on every request for multi-user isolation
 api.interceptors.request.use((config) => {
   config.headers['X-Client-Id'] = getClientId()
+  const adminToken = window.sessionStorage.getItem('claudio_admin_token')
+  if (adminToken) config.headers['X-Admin-Token'] = adminToken
   return config
 })
 

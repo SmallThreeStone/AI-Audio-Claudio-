@@ -11,7 +11,7 @@ import { getAnalyticsEvents } from '../../api/analytics'
 
 const ChartsSection = lazy(() => import('./AdminCharts'))
 
-type Tab = 'users' | 'sessions' | 'listening' | 'anomalies' | 'analytics'
+type Tab = 'overview' | 'users' | 'sessions' | 'listening' | 'anomalies' | 'analytics'
 
 const statusBadge: Record<string, string> = {
   logged_in: 'bg-green-500/20 text-green-400',
@@ -38,7 +38,7 @@ const eventBadge: Record<string, string> = {
 export default function AdminDashboard() {
   const { setShowAdmin, user } = useStore()
   const isOwner = user?.role === 'owner'
-  const [activeTab, setActiveTab] = useState<Tab>('users')
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [sessions, setSessions] = useState<AdminSession[]>([])
@@ -49,6 +49,7 @@ export default function AdminDashboard() {
   const [analyticsData, setAnalyticsData] = useState<{ event_counts: { event_name: string; count: number }[]; daily_events: { date: string; count: number }[]; total_events: number } | null>(null)
   const [viewProfile, setViewProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   const refreshData = () => {
     Promise.all([
@@ -61,7 +62,11 @@ export default function AdminDashboard() {
       setSessions(ss)
       setEvents(ev)
       setAnomalies(an.alerts)
-    }).catch((e) => { console.warn('Admin overview load failed:', e) })
+      setLoadError('')
+    }).catch((e) => {
+      console.warn('Admin overview load failed:', e)
+      setLoadError('后台数据刷新失败，请检查管理权限或稍后重试')
+    })
   }
 
   useEffect(() => {
@@ -83,7 +88,11 @@ export default function AdminDashboard() {
       setHourly(hr)
       setAnomalies(an.alerts)
       if (anl) setAnalyticsData(anl)
-    }).catch((e) => { console.warn('Admin hourly/trends load failed:', e) }).finally(() => setLoading(false))
+      setLoadError('')
+    }).catch((e) => {
+      console.warn('Admin hourly/trends load failed:', e)
+      setLoadError('后台数据加载失败，请重新验证管理密码后再试')
+    }).finally(() => setLoading(false))
   }, [])
 
   const handleSetRole = async (userId: number, role: string) => {
@@ -115,6 +124,7 @@ export default function AdminDashboard() {
   }
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
+    { key: 'overview', label: '运营总览' },
     { key: 'users', label: '用户管理' },
     { key: 'sessions', label: '会话记录' },
     { key: 'listening', label: '播放记录' },
@@ -122,58 +132,77 @@ export default function AdminDashboard() {
     { key: 'analytics', label: '事件统计' },
   ]
 
+  const activeSessions = sessions.filter((s) => ['generating', 'refilling', 'ready', 'playing'].includes(s.status)).length
+  const completedEvents = events.filter((e) => e.event === 'completed').length
+  const skippedEvents = events.filter((e) => e.event === 'skipped').length
+  const completionBase = completedEvents + skippedEvents
+  const completionRate = completionBase > 0 ? Math.round((completedEvents / completionBase) * 100) : 0
+  const topUser = [...users].sort((a, b) => b.listen_count - a.listen_count)[0]
+
   return (
     <div className="radio-bg min-h-screen">
-      {/* Header */}
-      <header className="border-b border-[var(--color-radio-border)] bg-[var(--color-radio-surface)]/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[var(--color-radio-accent)] rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-bold">C</span>
+      <header className="admin-shell__topbar">
+        <div className="admin-shell__topbar-inner">
+          <div className="admin-brand">
+            <div className="admin-brand__mark">C</div>
+            <div>
+              <span>Claudio FM</span>
+              <strong>管理面板</strong>
             </div>
-            <span className="text-lg font-bold tracking-wide">
-              Claudio<span className="text-[var(--color-radio-muted)] font-normal"> FM</span>
-              <span className="text-[var(--color-radio-gold)] text-sm ml-2">管理面板</span>
-            </span>
           </div>
-          <button
-            onClick={() => setShowAdmin(false)}
-            className="text-sm text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)] transition-colors"
-          >
+          <button onClick={() => setShowAdmin(false)} className="admin-return-button">
             返回电台
           </button>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* Overview Cards */}
-        {overview && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card label="总用户" value={overview.total_users} sub={`${overview.active_users} 活跃`} />
-            <Card label="总会话" value={overview.total_sessions} sub={`今日 ${overview.sessions_today}`} />
-            <Card label="歌曲库" value={overview.total_songs} />
-            <Card label="总播放" value={overview.total_listens} />
+      <main className="admin-shell">
+        <section className="admin-hero">
+          <div>
+            <span>运营驾驶舱</span>
+            <h1>电台数据总览</h1>
+            <p>看用户、会话、播放和异常信号，判断 AI 电台是否真的在稳定服务。</p>
+          </div>
+          <button onClick={refreshData} className="admin-refresh-button">
+            刷新数据
+          </button>
+        </section>
+
+        {loadError && (
+          <div className="admin-alert">
+            {loadError}
           </div>
         )}
 
-        {/* Charts — lazy loaded to keep recharts out of main bundle */}
-        <Suspense fallback={<div className="h-40 flex items-center justify-center text-xs text-[var(--color-radio-muted)]">加载图表中...</div>}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {overview && (
+          <section className="admin-metric-grid">
+            <MetricCard label="总用户" value={overview.total_users} sub={`${overview.active_users} 位在线`} tone="accent" />
+            <MetricCard label="总会话" value={overview.total_sessions} sub={`今日新增 ${overview.sessions_today}`} tone="gold" />
+            <MetricCard label="歌曲库" value={overview.total_songs} sub="已导入歌曲总量" />
+            <MetricCard label="播放事件" value={overview.total_listens} sub={`完播率 ${completionRate || 0}%`} />
+            <MetricCard label="活跃会话" value={activeSessions} sub="生成/待播/播放中" tone={activeSessions > 0 ? 'accent' : 'muted'} />
+            <MetricCard label="异常告警" value={anomalies.length} sub={anomalies.length ? '需要关注' : '暂无风险'} tone={anomalies.length ? 'gold' : 'muted'} />
+          </section>
+        )}
+
+        <section className="admin-insight-grid">
+          <InsightCard title="当前运营判断" value={activeSessions > 0 ? '有用户正在收听或生成' : '当前处于安静时段'} detail={topUser ? `最活跃用户：${topUser.nickname || `#${topUser.id}`} · ${topUser.listen_count} 次播放` : '暂无用户播放记录'} />
+          <InsightCard title="播放质量" value={completionBase ? `${completionRate}% 完播倾向` : '样本不足'} detail={completionBase ? `${completedEvents} 次完播 · ${skippedEvents} 次跳过` : '有播放记录后会自动计算完播/跳过倾向'} />
+          <InsightCard title="数据可信度" value={loadError ? '接口异常' : '接口正常'} detail="统计来自会话、队列、播放事件和前端埋点，后台密码验证后可读取。" />
+        </section>
+
+        <Suspense fallback={<div className="admin-chart-loading">加载图表中...</div>}>
+          <div className="admin-chart-grid">
             <ChartsSection trends={trends} hourly={hourly} users={users} />
           </div>
         </Suspense>
 
-        {/* Tabs */}
-        <div className="flex gap-1 bg-[var(--color-radio-card)] rounded-lg p-1">
+        <div className="admin-tabs">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
-                activeTab === t.key
-                  ? 'bg-[var(--color-radio-accent)] text-white'
-                  : 'text-[var(--color-radio-muted)] hover:text-[var(--color-radio-text)]'
-              }`}
+              className={activeTab === t.key ? 'active' : ''}
             >
               {t.label}
               {t.badge != null && t.badge > 0 && (
@@ -185,8 +214,10 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Tab Content */}
-        <div className="bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl overflow-hidden">
+        <div className="admin-table-panel">
+          {activeTab === 'overview' && (
+            <OverviewPanel users={users} sessions={sessions} events={events} anomalies={anomalies} analyticsData={analyticsData} />
+          )}
           {activeTab === 'users' && (
             <UsersTable users={users} isOwner={isOwner} onSetRole={handleSetRole} onViewProfile={handleViewProfile} />
           )}
@@ -195,7 +226,7 @@ export default function AdminDashboard() {
           {activeTab === 'anomalies' && <AnomaliesPanel alerts={anomalies} />}
           {activeTab === 'analytics' && <AnalyticsPanel data={analyticsData} />}
         </div>
-      </div>
+      </main>
 
       {/* Profile Modal */}
       {viewProfile && (
@@ -271,17 +302,101 @@ function ProfileModal({ profile, onClose }: { profile: UserProfile; onClose: () 
   )
 }
 
-function Card({ label, value, sub }: { label: string; value: number; sub?: string }) {
+function MetricCard({ label, value, sub, tone = 'muted' }: { label: string; value: number; sub?: string; tone?: 'accent' | 'gold' | 'muted' }) {
   return (
-    <div className="bg-[var(--color-radio-card)] border border-[var(--color-radio-border)] rounded-xl p-4">
-      <div className="text-[var(--color-radio-muted)] text-xs mb-1">{label}</div>
-      <div className="text-2xl font-bold text-[var(--color-radio-text)]">{value}</div>
-      {sub && <div className="text-xs text-[var(--color-radio-muted)] mt-0.5">{sub}</div>}
+    <div className={`admin-metric-card admin-metric-card--${tone}`}>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      {sub && <p>{sub}</p>}
+    </div>
+  )
+}
+
+function InsightCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="admin-insight-card">
+      <span>{title}</span>
+      <strong>{value}</strong>
+      <p>{detail}</p>
+    </div>
+  )
+}
+
+function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="admin-empty-state">
+      <strong>{title}</strong>
+      <p>{detail}</p>
+    </div>
+  )
+}
+
+function OverviewPanel({ users, sessions, events, anomalies, analyticsData }: {
+  users: AdminUser[]
+  sessions: AdminSession[]
+  events: AdminListenEvent[]
+  anomalies: AdminAnomaly[]
+  analyticsData: AnalyticsEventsData | null
+}) {
+  const latestSession = sessions[0]
+  const latestEvent = events[0]
+  const topEvents = analyticsData?.event_counts.slice(0, 5) || []
+  return (
+    <div className="admin-overview-panel">
+      <div className="admin-overview-card">
+        <span>最近会话</span>
+        {latestSession ? (
+          <>
+            <strong>{latestSession.user_request || latestSession.session_theme || '未命名会话'}</strong>
+            <p>{latestSession.user_nickname} · {latestSession.status} · {latestSession.created_at ? new Date(latestSession.created_at).toLocaleString('zh-CN') : '-'}</p>
+          </>
+        ) : (
+          <p>暂无会话记录</p>
+        )}
+      </div>
+      <div className="admin-overview-card">
+        <span>最近播放</span>
+        {latestEvent ? (
+          <>
+            <strong>{latestEvent.song_name}</strong>
+            <p>{latestEvent.user_nickname} · {latestEvent.event} · {latestEvent.listened_at ? new Date(latestEvent.listened_at).toLocaleString('zh-CN') : '-'}</p>
+          </>
+        ) : (
+          <p>暂无播放事件</p>
+        )}
+      </div>
+      <div className="admin-overview-card">
+        <span>异常摘要</span>
+        <strong>{anomalies.length ? `${anomalies.length} 条告警` : '暂无异常'}</strong>
+        <p>{anomalies[0]?.detail || '当前没有版权失败、高跳过率或短会话告警。'}</p>
+      </div>
+      <div className="admin-overview-card">
+        <span>事件热度</span>
+        {topEvents.length ? (
+          <div className="admin-event-list">
+            {topEvents.map((e) => (
+              <p key={e.event_name}>{e.event_name}<b>{e.count}</b></p>
+            ))}
+          </div>
+        ) : (
+          <p>暂无前端事件记录</p>
+        )}
+      </div>
+      <div className="admin-overview-card admin-overview-card--wide">
+        <span>用户概况</span>
+        <strong>{users.length ? `${users.length} 位用户` : '暂无用户'}</strong>
+        <p>{users.length ? `最近活跃：${users.slice(0, 4).map((u) => u.nickname || `#${u.id}`).join('、')}` : '用户登录后会自动出现在这里。'}</p>
+      </div>
     </div>
   )
 }
 
 function UsersTable({ users, isOwner, onSetRole, onViewProfile }: { users: AdminUser[]; isOwner: boolean; onSetRole: (id: number, role: string) => void; onViewProfile: (id: number) => void }) {
+  if (users.length === 0) {
+    return <EmptyState title="暂无用户数据" detail="用户扫码或密码登录后，这里会展示身份、角色、会话数和播放数。" />
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -355,6 +470,9 @@ function UsersTable({ users, isOwner, onSetRole, onViewProfile }: { users: Admin
 }
 
 function SessionsTable({ sessions, isOwner, onForceStop }: { sessions: AdminSession[]; isOwner: boolean; onForceStop: (id: number) => void }) {
+  if (sessions.length === 0) {
+    return <EmptyState title="暂无会话记录" detail="用户生成电台后，会话主题、状态和播放进度会出现在这里。" />
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -407,6 +525,9 @@ function SessionsTable({ sessions, isOwner, onForceStop }: { sessions: AdminSess
 }
 
 function ListeningTable({ events }: { events: AdminListenEvent[] }) {
+  if (events.length === 0) {
+    return <EmptyState title="暂无播放记录" detail="歌曲开始、完播和跳过事件会在播放过程中自动记录。" />
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -447,7 +568,10 @@ type AnalyticsEventsData = { event_counts: { event_name: string; count: number }
 
 function AnalyticsPanel({ data }: { data: AnalyticsEventsData | null }) {
   if (!data) {
-    return <div className="p-6 text-center text-[var(--color-radio-muted)] text-sm">加载中...</div>
+    return <EmptyState title="暂无事件统计" detail="前端埋点事件还没有返回，刷新或产生操作后会显示趋势。" />
+  }
+  if (data.total_events === 0) {
+    return <EmptyState title="暂无事件统计" detail="打开页面、生成电台、播放反馈等行为会逐步形成事件数据。" />
   }
   const maxDaily = Math.max(...data.daily_events.map(d => d.count), 1)
 
@@ -493,11 +617,7 @@ function AnalyticsPanel({ data }: { data: AnalyticsEventsData | null }) {
 
 function AnomaliesPanel({ alerts }: { alerts: AdminAnomaly[] }) {
   if (alerts.length === 0) {
-    return (
-      <div className="p-6 text-center text-[var(--color-radio-muted)] text-sm">
-        暂无异常告警
-      </div>
-    )
+    return <EmptyState title="暂无异常告警" detail="版权失败率、高跳过率和短会话都在正常范围内。" />
   }
   return (
     <div className="divide-y divide-[var(--color-radio-border)]">

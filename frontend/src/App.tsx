@@ -36,6 +36,7 @@ function AdminAuthGate({ onVerify }: { onVerify: () => void }) {
     try {
       const result = await verifyAdminPassword(password)
       if (result.valid) {
+        if (result.admin_token) window.sessionStorage.setItem('claudio_admin_token', result.admin_token)
         onVerify()
       } else {
         setError(result.message || '密码错误')

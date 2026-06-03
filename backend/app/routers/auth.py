@@ -9,6 +9,7 @@ from ..config import ADMIN_PASSWORD_HASH
 from ..database import get_session
 from ..models.user import User
 from ..services.netease_client import netease
+from ..utils.admin_token import issue_admin_token
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +286,7 @@ async def admin_verify(request: Request):
 
     hashed = hashlib.sha256(password.encode()).hexdigest()
     if hashed == ADMIN_PASSWORD_HASH:
-        return {"valid": True}
+        return {"valid": True, "admin_token": issue_admin_token()}
     return {"valid": False, "message": "密码错误"}
 
 
