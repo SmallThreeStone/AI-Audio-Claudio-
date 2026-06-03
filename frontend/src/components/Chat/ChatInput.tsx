@@ -27,6 +27,8 @@ export default function ChatInput() {
   const [greeting, setGreeting] = useState<string | null>(null)
   const [suggestedMood, setSuggestedMood] = useState<string | null>(null)
   const [personalizedPrompts, setPersonalizedPrompts] = useState<string[]>([])
+  const [promptSource, setPromptSource] = useState<'ai' | 'context' | 'static'>('static')
+  const [contextBadges, setContextBadges] = useState<string[]>([])
   const [demoAvailable, setDemoAvailable] = useState(false)
   const [showAdjust, setShowAdjust] = useState(false)
   const [adjustMoodText, setAdjustMoodText] = useState('')
@@ -40,6 +42,8 @@ export default function ChatInput() {
       .then((g) => {
         setGreeting(g.greeting_text)
         setSuggestedMood(g.suggested_mood)
+        setPromptSource(g.prompt_source || (g.ai_prompts?.length ? 'ai' : 'context'))
+        setContextBadges(g.context_badges || [])
         // Prefer AI-generated prompts over template ones
         if (g.ai_prompts?.length) setPersonalizedPrompts(g.ai_prompts)
         else if (g.personalized_prompts?.length) setPersonalizedPrompts(g.personalized_prompts)
@@ -122,6 +126,9 @@ export default function ChatInput() {
 
   const showIdle = !isGenerating && !isSubmitting
   const showDemoEntry = demoAvailable && !user && !demoMode
+  const visiblePrompts = personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS
+  const promptTitle = promptSource === 'ai' ? 'AI 场景指令' : promptSource === 'context' ? '场景指令' : '可直接交给 DJ 的指令'
+  const promptHint = promptSource === 'ai' ? '已读取时间、天气和你的曲库偏好' : promptSource === 'context' ? '根据当前场景和曲库生成' : '先用这些开播，随后会学习你的偏好'
 
   return (
     <div className="dj-console-input">
@@ -241,10 +248,20 @@ export default function ChatInput() {
         <div className="signal-suggestion-block">
           <div className="signal-suggestion-title">
             <span />
-            <p>可直接交给 DJ 的指令</p>
+            <div>
+              <p>{promptTitle}</p>
+              <em>{promptHint}</em>
+            </div>
           </div>
+          {contextBadges.length > 0 && (
+            <div className="signal-context-row">
+              {contextBadges.map((badge) => (
+                <span key={badge}>{badge}</span>
+              ))}
+            </div>
+          )}
           <div className="signal-chip-row">
-            {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (
+            {visiblePrompts.map((prompt) => (
               <button
                 key={prompt}
                 onClick={() => handleSubmit(prompt)}

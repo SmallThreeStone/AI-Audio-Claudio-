@@ -82,10 +82,14 @@ export async function getGreeting() {
     suggested_mood: string
     time_label: string
     time_mood: string
+    time_text?: string
+    weather_summary?: string
     recent_artists: string[]
     top_genre: string
     personalized_prompts: string[]
     ai_prompts?: string[]
+    prompt_source?: 'ai' | 'context'
+    context_badges?: string[]
   }
 }
 

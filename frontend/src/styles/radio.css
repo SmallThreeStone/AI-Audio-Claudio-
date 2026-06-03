@@ -1299,13 +1299,12 @@
 
 .signal-suggestion-title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 7px;
   margin-bottom: 10px;
   color: rgba(238, 252, 248, 0.48);
-  font-size: 11px;
-  font-weight: 800;
+  text-align: center;
 }
 
 .signal-suggestion-title span {
@@ -1314,6 +1313,45 @@
   border-radius: 50%;
   background: var(--color-radio-accent);
   box-shadow: 0 0 14px rgba(24, 246, 210, 0.75);
+}
+
+.signal-suggestion-title p {
+  color: rgba(238, 252, 248, 0.68);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.signal-suggestion-title em {
+  display: block;
+  margin-top: 3px;
+  color: rgba(238, 252, 248, 0.38);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.signal-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: -2px 0 10px;
+}
+
+.signal-context-row span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 246, 210, 0.12);
+  background: rgba(24, 246, 210, 0.045);
+  color: rgba(24, 246, 210, 0.68);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .signal-generation-card {
