@@ -7,6 +7,13 @@ import PersonaSelector from './PersonaSelector'
 import VoiceInput from './VoiceInput'
 import AIMaterialStation from '../Library/AIMaterialStation'
 
+const COMMAND_TYPES = [
+  { label: '心情开播', hint: '生成一整档节目', example: '下雨天，想听松一点的华语歌' },
+  { label: '点名艺人', hint: '优先命中艺人', example: '来一档梁博夜路频道' },
+  { label: '改变方向', hint: '播放中可调整', example: '保留氛围，但节奏提起来' },
+  { label: '找歌补素材', hint: '先同步歌单', example: '缺歌时去素材补给站刷新' },
+]
+
 const QUICK_PROMPTS = [
   '来几首梁博，适合晚上开车',
   '少说话多放歌，来点民谣摇滚',
@@ -29,6 +36,14 @@ const SCENE_CHANNELS = [
   { name: '开车不困', prompt: '开车不困频道，节奏要有精神，但不要太吵' },
 ]
 
+const ADJUST_PROMPTS = [
+  '更安静一点',
+  '节奏提起来',
+  '多来点这个艺人',
+  '保留氛围但换歌',
+  '接下来别放现场版',
+]
+
 export default function ChatInput() {
   const [text, setText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -42,9 +57,9 @@ export default function ChatInput() {
   const [showAdjust, setShowAdjust] = useState(false)
   const [adjustMoodText, setAdjustMoodText] = useState('')
   const [adjusting, setAdjusting] = useState(false)
+  const [activeCommand, setActiveCommand] = useState(COMMAND_TYPES[0])
   const { setIsGenerating, isGenerating, generationMessage, generationStage, selectedPersona, demoMode, setDemoMode, user, session } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getGreeting()
@@ -111,8 +126,8 @@ export default function ChatInput() {
     setIsSubmitting(false)
   }
 
-  const handleAdjustMood = async () => {
-    const trimmed = adjustMoodText.trim()
+  const handleAdjustMood = async (overrideText?: string) => {
+    const trimmed = (overrideText || adjustMoodText).trim()
     if (!trimmed || adjusting || !session) return
     setAdjusting(true)
     setIsGenerating(true)
@@ -179,26 +194,62 @@ export default function ChatInput() {
         )}
       </div>
 
+      <div className="dj-command-types">
+        {COMMAND_TYPES.map((type) => (
+          <button
+            key={type.label}
+            type="button"
+            onClick={() => {
+              if (type.label === '找歌补素材') {
+                setText(type.example)
+              } else {
+                setActiveCommand(type)
+                setText(type.example)
+              }
+            }}
+            className={activeCommand.label === type.label ? 'active' : ''}
+            title={type.hint}
+          >
+            <span>{type.label}</span>
+            <small>{type.hint}</small>
+          </button>
+        ))}
+      </div>
+
       {/* Adjust mood mini input */}
       {showAdjust && session && (
-        <div className="dj-adjust-row">
-          <input
-            type="text"
-            value={adjustMoodText}
-            onChange={(e) => setAdjustMoodText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleAdjustMood() }}
-            placeholder="想换什么心情？比如「想听更欢快的」..."
-            disabled={adjusting}
-            autoFocus
-            className="dj-mini-input"
-          />
-          <button
-            onClick={handleAdjustMood}
-            disabled={adjusting || !adjustMoodText.trim()}
-            className="dj-mini-submit"
-          >
-            {adjusting ? '...' : '换'}
-          </button>
+        <div className="dj-adjust-card">
+          <div className="dj-adjust-row">
+            <input
+              type="text"
+              value={adjustMoodText}
+              onChange={(e) => setAdjustMoodText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdjustMood() }}
+              placeholder="播放中直接改节目方向，比如「想听更欢快的」..."
+              disabled={adjusting}
+              autoFocus
+              className="dj-mini-input"
+            />
+            <button
+              onClick={() => handleAdjustMood()}
+              disabled={adjusting || !adjustMoodText.trim()}
+              className="dj-mini-submit"
+            >
+              {adjusting ? '...' : '换'}
+            </button>
+          </div>
+          <div className="dj-adjust-presets">
+            {ADJUST_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => handleAdjustMood(prompt)}
+                disabled={adjusting}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -328,6 +379,7 @@ export default function ChatInput() {
           )}
         </div>
       )}
+
     </div>
   )
 }

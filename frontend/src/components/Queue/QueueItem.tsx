@@ -3,11 +3,11 @@ import type { QueueItem as QueueItemType } from '../../types'
 export default function QueueItem({ item, isCurrent, compact }: { item: QueueItemType; isCurrent: boolean; compact?: boolean }) {
   const isTTS = item.item_type.startsWith('tts')
   const isError = item.status === 'error'
-  const songReason = item.intro_text?.trim()
+  const songReason = item.selection_reason || item.intro_text?.trim()
   const ttsLabel = item.item_type === 'tts_intro' ? '开场报幕' : item.item_type === 'tts_outro' ? '收尾' : '过渡串词'
-  const issueLabel = item.error_message?.includes('howler')
+  const issueLabel = item.recovery_hint || (item.error_message?.includes('howler')
     ? '播放失败，可能是版权或链接过期，已准备重试'
-    : item.error_message || '播放链接暂不可用，可能需要绑定网易云或换一首'
+    : item.error_message || '播放链接暂不可用，可能需要绑定网易云或换一首')
   const readyLabel = item.item_type === 'song' && item.availability === 'verified'
     ? '可播'
     : item.item_type === 'song' && item.availability === 'deferred'
@@ -20,7 +20,6 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
         isCurrent ? 'queue-item--current' : isError ? 'queue-item--error' : ''
       }`}
     >
-      {/* Icon */}
       <div className="flex-shrink-0">
         {isTTS ? (
           <div className="queue-item__tts">
@@ -42,7 +41,6 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <p className="queue-item__title">
           {isTTS ? (
@@ -58,7 +56,9 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
           <p className="queue-item__subline">{(item.tts_text || item.intro_text || '').slice(0, compact ? 34 : 52)}...</p>
         )}
         {!isTTS && songReason && (
-          <p className="queue-item__reason">AI 选歌：{songReason.slice(0, compact ? 38 : 64)}</p>
+          <p className={isError ? 'queue-item__reason queue-item__reason--error' : 'queue-item__reason'}>
+            {isError ? issueLabel : `AI 选歌：${songReason.slice(0, compact ? 38 : 64)}`}
+          </p>
         )}
         {!isTTS && item.reason_tags?.length ? (
           <div className="queue-item__tags">
@@ -69,7 +69,6 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
         ) : null}
       </div>
 
-      {/* Status */}
       <div className="flex-shrink-0">
         {isError ? (
           <span className="queue-item__status queue-item__status--error" title={issueLabel}>

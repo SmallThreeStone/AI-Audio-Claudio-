@@ -43,12 +43,17 @@ export interface QueueItem {
   artist?: string
   cover_url?: string
   duration_ms?: number
+  genre?: string
+  mood_tags?: string
+  bpm?: number
   tts_text?: string
   tts_audio_url?: string
   intro_text?: string
   stream_url?: string
   status: 'pending' | 'tts_generating' | 'ready' | 'error' | 'skipped' | 'completed'
   error_message?: string
+  selection_reason?: string
+  recovery_hint?: string
   user_feedback?: 'liked' | 'disliked'
   reason_tags?: string[]
   availability?: 'verified' | 'deferred' | 'failed' | null

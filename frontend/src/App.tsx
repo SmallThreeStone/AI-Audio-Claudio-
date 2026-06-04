@@ -247,7 +247,7 @@ function MainApp() {
                     onClick={() => setShowProfile(!showProfile)}
                     className={showProfile ? 'active' : ''}
                   >
-                    听歌画像
+                    素材健康度
                   </button>
                 </div>
                 {showPlaylists && <PlaylistBrowser hideHeader />}

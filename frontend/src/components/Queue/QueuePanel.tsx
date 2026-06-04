@@ -4,7 +4,9 @@ import QueueItem from './QueueItem'
 export default function QueuePanel({ compact }: { compact?: boolean }) {
   const { queue, session, currentIndex, demoMode, isGenerating, generationStage, generationMessage } = useStore()
 
-  if (!session || queue.length === 0) {
+  const displayItems = queue.filter((item) => item.status !== 'skipped')
+  const erroredSongs = queue.filter((item) => item.item_type === 'song' && item.status === 'error')
+  if (!session || displayItems.length === 0) {
     const emptySteps = [
       { key: 'analyzing', label: '读取心情' },
       { key: 'building', label: '匹配歌单' },
@@ -33,7 +35,7 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
     )
   }
 
-  const upcoming = queue.filter((item) => item.position >= currentIndex)
+  const upcoming = displayItems.filter((item) => item.position >= currentIndex)
   const visible = compact ? upcoming : upcoming.slice(0, 10)
   const songCount = upcoming.filter((item) => item.item_type === 'song').length
   const ttsCount = upcoming.filter((item) => item.item_type.startsWith('tts')).length
@@ -43,10 +45,18 @@ export default function QueuePanel({ compact }: { compact?: boolean }) {
   return (
     <div className={compact ? 'queue-panel-shell' : 'queue-panel-shell queue-panel-shell--mobile'} data-onboarding="queue">
       <div className={`queue-panel-title ${compact ? '' : 'queue-panel-title--mobile'}`}>
-        <h3>AI 节目单</h3>
+        <div className="queue-panel-title__main">
+          <h3>AI 节目单</h3>
+          <p>当前频道：{session.session_theme || session.user_request || '私人电台'}</p>
+        </div>
         {demoMode && (
           <span className="queue-badge">
             体验模式
+          </span>
+        )}
+        {erroredSongs.length > 0 && (
+          <span className="queue-badge queue-badge--warning">
+            已补救 {erroredSongs.length} 首
           </span>
         )}
         <span>

@@ -154,6 +154,9 @@ export function useRadioPlayer() {
       }
       if (item.status !== 'ready') {
         playerLog('[Player] playItem — item not ready, skipping id=', item.id, 'status=', item.status)
+        if (item.status === 'error') {
+          useStore.getState().setNotice(item.recovery_hint || '???????AI DJ ????????')
+        }
         advanceTo(index + 1, true)
         return
       }
@@ -170,6 +173,7 @@ export function useRadioPlayer() {
       if (!src) {
         playerLog('[Player] playItem — no src, advancing')
         radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: 'no_url' })
+        useStore.getState().setNotice('?????????????AI DJ ?????')
         advanceTo(index + 1, true)
         return
       }
@@ -252,6 +256,7 @@ export function useRadioPlayer() {
           if (token !== currentToken) return
           clearLoadTimer()
           console.warn('[Player] onplayerror — id:', item.id)
+          useStore.getState().setNotice('??????AI DJ ????????')
           advanceTo(currentIdxRef.current + 1, true)
           skipTrack()
         },
@@ -277,6 +282,7 @@ export function useRadioPlayer() {
           clearLoadTimer()
           console.error('[Player] onloaderror — id:', item.id, 'error:', err)
           radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: `howler_error_${err}` })
+          useStore.getState().setNotice('???????AI DJ ??????')
           advanceTo(currentIdxRef.current + 1, true)
           skipTrack()
         },
