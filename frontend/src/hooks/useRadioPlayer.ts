@@ -103,6 +103,9 @@ export function useRadioPlayer() {
       }
       if (item.status !== 'ready') {
         playerLog('[Player] playItem — item not ready, skipping id=', item.id, 'status=', item.status)
+        if (item.status === 'error') {
+          useStore.getState().setNotice(item.recovery_hint || '这首暂不可播，AI DJ 已自动换到下一首')
+        }
         advanceTo(index + 1)
         return
       }
@@ -119,6 +122,7 @@ export function useRadioPlayer() {
       if (!src) {
         playerLog('[Player] playItem — no src, advancing')
         radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: 'no_url' })
+        useStore.getState().setNotice('这首暂时没有可用播放链接，AI DJ 已自动换歌')
         advanceTo(index + 1)
         return
       }
@@ -195,6 +199,7 @@ export function useRadioPlayer() {
           if (token !== currentToken) return
           clearLoadTimer()
           console.warn('[Player] onplayerror — id:', item.id)
+          useStore.getState().setNotice('播放被阻止，AI DJ 已自动切到下一首')
           advanceTo(currentIdxRef.current + 1)
           skipTrack()
         },
@@ -219,6 +224,7 @@ export function useRadioPlayer() {
           clearLoadTimer()
           console.error('[Player] onloaderror — id:', item.id, 'error:', err)
           radioWS.send({ type: 'error_report', queue_item_id: item.id, reason: `howler_error_${err}` })
+          useStore.getState().setNotice('这首暂不可播，AI DJ 正在替你换歌')
           advanceTo(currentIdxRef.current + 1)
           skipTrack()
         },

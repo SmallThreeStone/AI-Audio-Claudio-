@@ -235,13 +235,13 @@ function MainApp() {
                     data-onboarding="sync"
                     className={showPlaylists ? 'active' : ''}
                   >
-                    歌单库
+                    素材补给
                   </button>
                   <button
                     onClick={() => setShowProfile(!showProfile)}
                     className={showProfile ? 'active' : ''}
                   >
-                    听歌画像
+                    素材健康度
                   </button>
                 </div>
                 {showPlaylists && <PlaylistBrowser hideHeader />}

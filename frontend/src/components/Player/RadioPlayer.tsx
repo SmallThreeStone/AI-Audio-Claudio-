@@ -106,14 +106,16 @@ export default function RadioPlayer() {
       )}
 
       {session?.session_theme && (
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--color-radio-gold)] font-medium tracking-wider uppercase">
-            {session.session_theme}
-          </span>
+        <div className="radio-channel-card">
+          <div>
+            <span>当前频道</span>
+            <strong>{session.session_theme}</strong>
+            <p>AI DJ 会围绕这个方向持续编排，可随时换心情调整。</p>
+          </div>
           <button
             onClick={stop}
             title="切换频道"
-            className="text-[10px] text-[var(--color-radio-muted)] hover:text-[var(--color-radio-gold)] border border-[var(--color-radio-border)]/30 hover:border-[var(--color-radio-gold)]/40 rounded-full px-2 py-0.5 transition-colors"
+            className="radio-channel-card__switch"
           >
             切换频道 ↻
           </button>

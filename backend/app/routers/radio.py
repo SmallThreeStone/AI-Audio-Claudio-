@@ -394,7 +394,7 @@ async def get_queue(request: Request, session: AsyncSession = Depends(get_sessio
         return {"type": "queue_update", "session": None, "items": [], "playing_index": 0}
 
     # Auto-expire sessions from previous days or >6 hours old (URLs all expired)
-    now = datetime.datetime.now()
+    now = datetime.datetime.utcnow()
     if active.created_at:
         age_hours = (now - active.created_at).total_seconds() / 3600
         if active.created_at.date() < now.date() or age_hours > 6:
@@ -526,6 +526,63 @@ def _status_message(status: str) -> str:
         "completed": "本期电台已结束",
         "error": "出错了",
     }.get(status, status)
+
+
+def _compact_text(text: str | None, limit: int = 58) -> str:
+    value = " ".join((text or "").split())
+    if len(value) <= limit:
+        return value
+    return value[:limit - 1] + "…"
+
+
+def _parse_mood_tags(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(tag) for tag in parsed if tag][:3]
+
+
+def _selection_reason(qi: QueueItem, song: Song | None, s: DJSession) -> str | None:
+    if qi.item_type != "song" or not song:
+        return None
+
+    intro = _compact_text(qi.intro_text, 48)
+    request = s.user_request or ""
+    signals: list[str] = []
+    artist = song.artist or ""
+    if artist and any(part.strip() and part.strip() in request for part in artist.split(" / ")):
+        signals.append("命中点名艺人")
+    if song.genre:
+        signals.append(song.genre)
+    tags = _parse_mood_tags(song.mood_tags)
+    if tags:
+        signals.append(" / ".join(tags))
+    if s.weather_summary:
+        signals.append("结合天气")
+
+    if intro and signals:
+        return f"{intro}｜{' + '.join(signals[:3])}"
+    if intro:
+        return intro
+    if signals:
+        return "AI 入选理由：" + " + ".join(signals[:3])
+    return "AI DJ 将它放进这一段，用来承接当前频道氛围"
+
+
+def _recovery_hint(qi: QueueItem, song: Song | None, next_ready: QueueItem | None, next_song: Song | None) -> str | None:
+    if qi.status != "error":
+        return None
+    reason = qi.error_message or "无法获取播放链接"
+    if next_ready and next_song:
+        return f"{reason}，已自动顺延到《{next_song.name}》"
+    if song and song.has_playable_url is False:
+        return f"{reason}，可能需要绑定或刷新网易云登录态"
+    return f"{reason}，AI DJ 会跳过并继续寻找下一首可播歌曲"
 
 
 @router.get("/personas")
@@ -920,7 +977,7 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
     from ..services.audio_proxy import get_song_url
     user_id = s.user_id
     for qi in items:
-        if qi.item_type == "song" and qi.song_id and not qi.stream_url:
+        if qi.item_type == "song" and qi.song_id and qi.status != "error" and not qi.stream_url:
             url = await get_song_url(db, qi.song_id, user_id)
             if url:
                 qi.stream_url = url
@@ -933,8 +990,19 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
                                qi.song_id, qi.id)
     await db.commit()
 
+    next_ready_song_by_position: dict[int, tuple[QueueItem, Song]] = {}
+    next_ready: tuple[QueueItem, Song] | None = None
+    for qi in reversed(items):
+        song = song_map.get(qi.song_id) if qi.song_id else None
+        if qi.item_type == "song" and qi.status == "ready" and song:
+            next_ready = (qi, song)
+        if next_ready:
+            next_ready_song_by_position[qi.position] = next_ready
+
     enriched = []
     for qi in items:
+        song = song_map.get(qi.song_id) if qi.song_id else None
+        next_ready_pair = next_ready_song_by_position.get(qi.position)
         entry = {
             "id": qi.id,
             "session_id": qi.session_id,
@@ -948,15 +1016,23 @@ async def _build_queue_response(db: AsyncSession, s: DJSession, initiator_client
             "status": qi.status,
             "error_message": qi.error_message,
             "user_feedback": qi.user_feedback,
+            "selection_reason": _selection_reason(qi, song, s),
+            "recovery_hint": _recovery_hint(
+                qi,
+                song,
+                next_ready_pair[0] if next_ready_pair else None,
+                next_ready_pair[1] if next_ready_pair else None,
+            ),
         }
 
-        if qi.song_id:
-            song = song_map.get(qi.song_id)
-            if song:
-                entry["song_name"] = song.name
-                entry["artist"] = song.artist
-                entry["cover_url"] = song.cover_url
-                entry["duration_ms"] = song.duration_ms
+        if song:
+            entry["song_name"] = song.name
+            entry["artist"] = song.artist
+            entry["cover_url"] = song.cover_url
+            entry["duration_ms"] = song.duration_ms
+            entry["genre"] = song.genre
+            entry["mood_tags"] = song.mood_tags
+            entry["bpm"] = song.bpm
 
         enriched.append(entry)
 

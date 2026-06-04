@@ -6,12 +6,27 @@ import { getClientId } from '../../utils/clientId'
 import PersonaSelector from './PersonaSelector'
 import VoiceInput from './VoiceInput'
 
+const COMMAND_TYPES = [
+  { label: '心情开播', hint: '生成一整档节目', example: '下雨天，想听松一点的华语歌' },
+  { label: '点名艺人', hint: '优先命中艺人', example: '来一档梁博夜路频道' },
+  { label: '改变方向', hint: '播放中可调整', example: '保留氛围，但节奏提起来' },
+  { label: '找歌补素材', hint: '先同步歌单', example: '缺歌时去素材补给站刷新' },
+]
+
 const QUICK_PROMPTS = [
   '深夜加班，来点能撑住的',
   '下雨天，想要氛围感音乐',
   '运动健身，来点燃的',
   '周末早晨，轻松慵懒的',
   '失恋了，需要治愈系',
+]
+
+const ADJUST_PROMPTS = [
+  '更安静一点',
+  '节奏提起来',
+  '多来点这个艺人',
+  '保留氛围但换歌',
+  '接下来别放现场版',
 ]
 
 export default function ChatInput() {
@@ -24,9 +39,10 @@ export default function ChatInput() {
   const [showAdjust, setShowAdjust] = useState(false)
   const [adjustMoodText, setAdjustMoodText] = useState('')
   const [adjusting, setAdjusting] = useState(false)
+  const [activeCommand, setActiveCommand] = useState(COMMAND_TYPES[0])
+  const [showSupply, setShowSupply] = useState(false)
   const { setIsGenerating, isGenerating, generationMessage, generationStage, selectedPersona, demoMode, setDemoMode, user, session } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getGreeting()
@@ -81,8 +97,8 @@ export default function ChatInput() {
     setIsSubmitting(false)
   }
 
-  const handleAdjustMood = async () => {
-    const trimmed = adjustMoodText.trim()
+  const handleAdjustMood = async (overrideText?: string) => {
+    const trimmed = (overrideText || adjustMoodText).trim()
     if (!trimmed || adjusting || !session) return
     setAdjusting(true)
     setIsGenerating(true)
@@ -136,26 +152,62 @@ export default function ChatInput() {
         )}
       </div>
 
+      <div className="dj-command-types">
+        {COMMAND_TYPES.map((type) => (
+          <button
+            key={type.label}
+            type="button"
+            onClick={() => {
+              if (type.label === '找歌补素材') {
+                setShowSupply(true)
+              } else {
+                setActiveCommand(type)
+                setText(type.example)
+              }
+            }}
+            className={activeCommand.label === type.label ? 'active' : ''}
+            title={type.hint}
+          >
+            <span>{type.label}</span>
+            <small>{type.hint}</small>
+          </button>
+        ))}
+      </div>
+
       {/* Adjust mood mini input */}
       {showAdjust && session && (
-        <div className="dj-adjust-row">
-          <input
-            type="text"
-            value={adjustMoodText}
-            onChange={(e) => setAdjustMoodText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleAdjustMood() }}
-            placeholder="想换什么心情？比如「想听更欢快的」..."
-            disabled={adjusting}
-            autoFocus
-            className="dj-mini-input"
-          />
-          <button
-            onClick={handleAdjustMood}
-            disabled={adjusting || !adjustMoodText.trim()}
-            className="dj-mini-submit"
-          >
-            {adjusting ? '...' : '换'}
-          </button>
+        <div className="dj-adjust-card">
+          <div className="dj-adjust-row">
+            <input
+              type="text"
+              value={adjustMoodText}
+              onChange={(e) => setAdjustMoodText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdjustMood() }}
+              placeholder="播放中直接改节目方向，比如「想听更欢快的」..."
+              disabled={adjusting}
+              autoFocus
+              className="dj-mini-input"
+            />
+            <button
+              onClick={() => handleAdjustMood()}
+              disabled={adjusting || !adjustMoodText.trim()}
+              className="dj-mini-submit"
+            >
+              {adjusting ? '...' : '换'}
+            </button>
+          </div>
+          <div className="dj-adjust-presets">
+            {ADJUST_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => handleAdjustMood(prompt)}
+                disabled={adjusting}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -166,7 +218,7 @@ export default function ChatInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="描述心情、天气、场景，AI DJ 会为你开播"
+          placeholder={`${activeCommand.label}：${activeCommand.example}`}
           disabled={isSubmitting || isGenerating}
           className="dj-command-input"
         />
@@ -216,7 +268,7 @@ export default function ChatInput() {
         <div className="signal-suggestion-block">
           <div className="signal-suggestion-title">
             <span />
-            <p>AI 推荐点播</p>
+            <p>AI 场景频道</p>
           </div>
           <div className="signal-chip-row">
             {(personalizedPrompts.length > 0 ? personalizedPrompts : QUICK_PROMPTS).map((prompt) => (
@@ -229,6 +281,28 @@ export default function ChatInput() {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {showIdle && (
+        <div className="dj-supply-drawer">
+          <button
+            type="button"
+            onClick={() => setShowSupply(!showSupply)}
+            className="dj-supply-toggle"
+          >
+            <span>缺歌？先补素材</span>
+            <small>{showSupply ? '收起' : '展开素材补给站'}</small>
+          </button>
+          {showSupply && (
+            <div className="dj-supply-panel">
+              <p>素材补给不是开播指令。它用于刷新网易云歌单、补足艺人和风格缺口，让下一次 AI 编排更准。</p>
+              <div>
+                <span>建议动作</span>
+                <strong>到「素材补给」同步或刷新歌单</strong>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

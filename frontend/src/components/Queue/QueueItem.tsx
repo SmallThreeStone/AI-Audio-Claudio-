@@ -3,6 +3,10 @@ import type { QueueItem as QueueItemType } from '../../types'
 export default function QueueItem({ item, isCurrent, compact }: { item: QueueItemType; isCurrent: boolean; compact?: boolean }) {
   const isTTS = item.item_type.startsWith('tts')
   const isError = item.status === 'error'
+  const aiReason = isTTS
+    ? (item.tts_text || item.intro_text ? `DJ 串场：${(item.tts_text || item.intro_text || '').slice(0, 42)}...` : 'DJ 串场，负责连接节目段落')
+    : item.selection_reason || item.intro_text || 'AI DJ 根据当前频道氛围放入队列'
+  const recoveryHint = item.recovery_hint || item.error_message || '这首暂不可播，AI DJ 会继续播放下一首'
 
   return (
     <div
@@ -43,6 +47,9 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
               <span className="ml-1">- {item.artist || '未知'}</span>
             </>
           )}
+        </p>
+        <p className={isError ? 'queue-item__reason queue-item__reason--error' : 'queue-item__reason'}>
+          {isError ? recoveryHint : aiReason}
         </p>
       </div>
 
