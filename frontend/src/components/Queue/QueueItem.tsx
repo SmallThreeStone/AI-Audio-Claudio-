@@ -3,6 +3,7 @@ import type { QueueItem as QueueItemType } from '../../types'
 export default function QueueItem({ item, isCurrent, compact }: { item: QueueItemType; isCurrent: boolean; compact?: boolean }) {
   const isTTS = item.item_type.startsWith('tts')
   const isError = item.status === 'error'
+  const songReason = item.intro_text?.trim()
   const ttsLabel = item.item_type === 'tts_intro' ? '开场报幕' : item.item_type === 'tts_outro' ? '收尾' : '过渡串词'
   const issueLabel = item.error_message?.includes('howler')
     ? '播放失败，可能是版权或链接过期，已准备重试'
@@ -55,6 +56,9 @@ export default function QueueItem({ item, isCurrent, compact }: { item: QueueIte
         </p>
         {isTTS && (
           <p className="queue-item__subline">{(item.tts_text || item.intro_text || '').slice(0, compact ? 34 : 52)}...</p>
+        )}
+        {!isTTS && songReason && (
+          <p className="queue-item__reason">AI 选歌：{songReason.slice(0, compact ? 38 : 64)}</p>
         )}
         {!isTTS && item.reason_tags?.length ? (
           <div className="queue-item__tags">

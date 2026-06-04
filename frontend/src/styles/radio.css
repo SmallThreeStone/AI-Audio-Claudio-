@@ -1021,6 +1021,16 @@
   white-space: nowrap;
 }
 
+.queue-item__reason {
+  margin-top: 4px;
+  color: rgba(226, 173, 88, 0.66);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .queue-item--current .queue-item__title {
   color: var(--color-radio-text);
 }
