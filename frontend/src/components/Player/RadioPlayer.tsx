@@ -12,6 +12,7 @@ import UpNext from './UpNext'
 import PlayHistory from './PlayHistory'
 import ShareCard from './ShareCard'
 import AIDispatchPanel from './AIDispatchPanel'
+import BroadcastDirector from './BroadcastDirector'
 import { useEffect } from 'react'
 
 const STAGES = [
@@ -21,7 +22,7 @@ const STAGES = [
 ]
 
 export default function RadioPlayer() {
-  const { session, queue, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
+  const { session, queue, currentIndex, isPlaying, isAudioLoading, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
   const { skip, skipTo, stop, togglePause, seek, previous } = useRadioPlayer()
 
   // Auto-clear notice after 8 seconds
@@ -137,6 +138,14 @@ export default function RadioPlayer() {
           generationMessage={generationMessage}
         />
       )}
+
+      <BroadcastDirector
+        queue={queue}
+        currentItem={currentItem}
+        currentIndex={currentIndex}
+        isPlaying={isPlaying}
+        isAudioLoading={isAudioLoading}
+      />
 
       {notice && (
         <div className="flex items-center gap-2 text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full pl-3 pr-1.5 py-1">
