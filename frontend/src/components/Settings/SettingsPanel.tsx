@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '../../store'
-import { getVoices, getTtsProvider, setTtsProvider, getCalendarStatus } from '../../api/radio'
+import { getVoices, getTtsProvider, getTtsStatus, setTtsProvider, getCalendarStatus } from '../../api/radio'
 
 export default function SettingsPanel() {
   const { showSettings, setShowSettings } = useStore()
@@ -56,11 +56,24 @@ function TTSSection() {
   const [voices, setVoices] = useState<{ id: string; name: string; gender: string; style: string }[]>([])
   const [loaded, setLoaded] = useState(false)
   const [provider, setProvider] = useState<'edge' | 'fish'>('edge')
+  const [ttsStatus, setTtsStatus] = useState<{
+    fish_configured: boolean
+    fish_reference_voice: boolean
+    effective_provider: 'edge' | 'fish'
+  } | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     getVoices().then((data) => { setVoices(data || []); setLoaded(true) }).catch((e) => { console.warn('TTS voices fetch failed:', e) })
     getTtsProvider().then((p) => setProvider(p as 'edge' | 'fish')).catch((e) => { console.warn('TTS provider fetch failed:', e) })
+    getTtsStatus().then((s) => {
+      setProvider(s.provider)
+      setTtsStatus({
+        fish_configured: s.fish_configured,
+        fish_reference_voice: s.fish_reference_voice,
+        effective_provider: s.effective_provider,
+      })
+    }).catch((e) => { console.warn('TTS status fetch failed:', e) })
   }, [])
 
   const handleProviderChange = useCallback(async (p: 'edge' | 'fish') => {
@@ -68,6 +81,12 @@ function TTSSection() {
     try {
       await setTtsProvider(p)
       setProvider(p)
+      const status = await getTtsStatus()
+      setTtsStatus({
+        fish_configured: status.fish_configured,
+        fish_reference_voice: status.fish_reference_voice,
+        effective_provider: status.effective_provider,
+      })
     } catch (e) { console.warn('TTS provider switch failed:', e) }
     setSaving(false)
   }, [])
@@ -95,23 +114,33 @@ function TTSSection() {
             disabled={saving}
             className={provider === 'edge' ? 'settings-choice active' : 'settings-choice'}
           >
-            <strong>Edge TTS</strong>
-            <span>免费、稳定、清晰自然</span>
+            <strong>稳定播报</strong>
+            <span>Edge TTS · 生成快，适合日常连续收听</span>
           </button>
           <button
             onClick={() => handleProviderChange('fish')}
             disabled={saving}
             className={provider === 'fish' ? 'settings-choice active' : 'settings-choice'}
           >
-            <strong>Fish Audio</strong>
-            <span>情绪标签、播报表现更强</span>
+            <strong>电台质感</strong>
+            <span>Fish Audio · 适合更有情绪和主持感的 DJ 声线</span>
           </button>
         </div>
-        <p className="settings-note">
-          {provider === 'fish'
-            ? 'Fish Audio 支持情感语音标签，需在 backend/.env 中配置 FISH_AUDIO_API_KEY。'
-            : 'Edge TTS 免费使用，发音清晰自然。'}
-        </p>
+        <div className={ttsStatus?.effective_provider === 'fish' ? 'settings-voice-advice active' : 'settings-voice-advice'}>
+          <div>
+            <span>当前实际生效</span>
+            <strong>{ttsStatus?.effective_provider === 'fish' ? 'Fish Audio 电台声线' : 'Edge TTS 稳定声线'}</strong>
+          </div>
+          <p>
+            {provider === 'fish' && !ttsStatus?.fish_configured
+              ? '已选择电台质感，但服务器还没有配置 FISH_AUDIO_API_KEY，本次会自动回到 Edge TTS，避免 DJ 报幕中断。'
+              : provider === 'fish'
+                ? ttsStatus?.fish_reference_voice
+                  ? '已接入参考声线，DJ 报幕会更像固定主持人；适合马上到 6.0 后继续做品牌化声音。'
+                  : 'Fish Audio 已可用；配置 FISH_AUDIO_REFERENCE_ID 后，DJ 声音会更稳定、更像一个固定主持人。'
+                : '推荐生产默认保持稳定播报；当你想强化“AI 电台主持人”差异化时，再切换电台质感。'}
+          </p>
+        </div>
       </section>
 
       <section className="settings-section">

@@ -9,6 +9,8 @@ export default function WaveProgressBar({ onSeek }: Props) {
   const { currentTime, duration, lowFreqEnergy, isPlaying } = useStore()
   const phaseRef = useRef(0)
   const rafRef = useRef<number>(0)
+  const barRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
 
   const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0
 
@@ -32,14 +34,67 @@ export default function WaveProgressBar({ onSeek }: Props) {
     return () => cancelAnimationFrame(rafRef.current)
   }, [isPlaying])
 
-  const handleSeek = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekFromClientX = useCallback(
+    (clientX: number) => {
       if (duration <= 0) return
-      const rect = e.currentTarget.getBoundingClientRect()
-      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      const rect = barRef.current?.getBoundingClientRect()
+      if (!rect?.width) return
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
       onSeek(ratio * duration)
     },
     [duration, onSeek],
+  )
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (duration <= 0) return
+      draggingRef.current = true
+      e.currentTarget.setPointerCapture(e.pointerId)
+      seekFromClientX(e.clientX)
+    },
+    [duration, seekFromClientX],
+  )
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!draggingRef.current) return
+      seekFromClientX(e.clientX)
+    },
+    [seekFromClientX],
+  )
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!draggingRef.current) return
+      draggingRef.current = false
+      e.currentTarget.releasePointerCapture(e.pointerId)
+      seekFromClientX(e.clientX)
+    },
+    [seekFromClientX],
+  )
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (duration <= 0) return
+      const step = e.shiftKey ? 15 : 5
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        onSeek(Math.max(0, currentTime - step))
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        onSeek(Math.min(duration, currentTime + step))
+      }
+      if (e.key === 'Home') {
+        e.preventDefault()
+        onSeek(0)
+      }
+      if (e.key === 'End') {
+        e.preventDefault()
+        onSeek(duration)
+      }
+    },
+    [currentTime, duration, onSeek],
   )
 
   const amp = isPlaying ? lowFreqEnergy * 4 + 1.5 : 1
@@ -70,13 +125,26 @@ export default function WaveProgressBar({ onSeek }: Props) {
   return (
     <div className="w-full space-y-1">
       <div
+        ref={barRef}
         className="relative w-full h-10 flex items-center cursor-pointer group"
-        onClick={handleSeek}
+        role="slider"
+        aria-label="播放进度"
+        aria-valuemin={0}
+        aria-valuemax={Math.max(0, Math.round(duration))}
+        aria-valuenow={Math.max(0, Math.round(currentTime))}
+        aria-disabled={duration <= 0}
+        tabIndex={duration > 0 ? 0 : -1}
+        title="拖动或点击调整进度"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => { draggingRef.current = false }}
+        onKeyDown={handleKeyDown}
       >
         <svg
           viewBox="0 0 100 40"
           preserveAspectRatio="none"
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full pointer-events-none"
         >
           <defs>
             <linearGradient id="waveFill" x1="0" y1="0" x2="1" y2="0">
@@ -150,6 +218,11 @@ export default function WaveProgressBar({ onSeek }: Props) {
             />
           </svg>
         </div>
+
+        <span
+          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-[var(--color-radio-accent)] shadow-[0_0_18px_rgba(24,246,210,0.55)] opacity-80 transition-opacity group-hover:opacity-100"
+          style={{ left: `${px}%` }}
+        />
       </div>
 
       <div className="flex justify-between text-xs text-[var(--color-radio-muted)]">

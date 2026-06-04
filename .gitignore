@@ -3,6 +3,7 @@ dist/
 __pycache__/
 *.pyc
 *.pyo
+*.tsbuildinfo
 .venv/
 venv/
 .env

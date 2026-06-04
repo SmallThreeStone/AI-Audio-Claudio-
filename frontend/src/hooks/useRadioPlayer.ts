@@ -21,6 +21,7 @@ let currentToken = 0
 // useRef would create two separate refs, and callbacks from the first mount
 // can't see updates made by the second mount.
 let _howl: Howl | null = null
+let _soundId: number | null = null
 let _playingSession: number | null = null  // F38: module-level, survives StrictMode
 
 function isTtsItem(item?: { item_type?: string } | null) {
@@ -43,6 +44,27 @@ function fadeInDuration(item: { item_type?: string }) {
   return isTtsItem(item) ? 180 : 650
 }
 
+function bindSoundId(howl: Howl, soundId?: number | null) {
+  if (howl !== _howl || soundId == null) return
+  _soundId = soundId
+}
+
+function clearSoundId(howl: Howl | null) {
+  if (!howl || howl === _howl) _soundId = null
+}
+
+function getSoundNode(howl: Howl, soundId?: number | null) {
+  const sounds: Array<{ _id?: number; _node?: HTMLAudioElement; _paused?: boolean }> = (howl as any)._sounds || []
+  return sounds.find(s => soundId != null && s._id === soundId)?._node
+    || sounds.find(s => s._node && !s._paused)?._node
+    || sounds.find(s => s._node)?._node
+}
+
+function howlSeek(howl: Howl, soundId?: number | null) {
+  const seek = soundId != null ? howl.seek(soundId) : howl.seek()
+  return typeof seek === 'number' ? seek : 0
+}
+
 function destroyHowl(h: Howl | null) {
   if (!h) return
   deadHowls.add(h)
@@ -59,6 +81,7 @@ function destroyHowl(h: Howl | null) {
   h.volume(0)
   h.stop()
   h.unload()
+  clearSoundId(h)
 }
 
 export function useRadioPlayer() {
@@ -99,6 +122,7 @@ export function useRadioPlayer() {
       }
       const oldHowl = _howl
       _howl = null
+      _soundId = null
       sharedAudioEl.current = null
       playerLog('howlRef → null (advanceTo cleanup)')
       setTimeout(() => destroyHowl(oldHowl), manual ? 190 : 0)
@@ -176,16 +200,14 @@ export function useRadioPlayer() {
         html5: true,
         volume: startVolume,
         format: ['mp3'],
-        onplay: () => {
+        onplay: (soundId) => {
+          bindSoundId(howl, soundId)
           if (token !== currentToken) { playerLog('[Player] onplay IGNORED — stale token:', token); return }
           clearLoadTimer()
           playerLog('onplay id=', item.id, 'type=', item.item_type, 'dur=', howl.duration().toFixed(1), 'token=', token)
 
           autoPlayBlockNoticeShown = false
-          const getPlayingNode = () => {
-            const sounds: Array<{ _node?: HTMLAudioElement; _paused?: boolean }> = (howl as any)._sounds || []
-            return sounds.find(s => s._node && !s._paused)?._node
-          }
+          const getPlayingNode = () => getSoundNode(howl, _soundId)
           const playingNode = getPlayingNode()
           if (playingNode) sharedAudioEl.current = playingNode
           if (targetVolume > startVolume) {
@@ -211,10 +233,11 @@ export function useRadioPlayer() {
               return
             }
             const node = getPlayingNode() || ((howl as any)._sounds?.[0]?._node)
-            const seek = node ? node.currentTime : (howl.seek() as number)
+            const seek = node ? node.currentTime : howlSeek(howl, _soundId)
             setCurrentTime(seek)
             radioWS.send({ type: 'progress_report', queue_item_id: item.id, position_seconds: seek })
-            if (seek < 0.05) {
+            const activelyPlaying = _soundId != null ? howl.playing(_soundId) : howl.playing()
+            if (activelyPlaying && seek < 0.05) {
               stuckSeconds++
               if (stuckSeconds >= 5) {
                 playerLog('[Player] STUCK at index', currentIdxRef.current, '— skipping')
@@ -243,6 +266,7 @@ export function useRadioPlayer() {
 
           setIsPlaying(false)
           setCurrentTime(0); setDuration(0)
+          clearSoundId(howl)
           if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
 
           advanceTo(currentIdxRef.current + 1)
@@ -264,7 +288,8 @@ export function useRadioPlayer() {
           if (token !== currentToken) return
           playerLog('[Player] onunlock — id:', item.id)
           if (_howl === howl && !howl.playing()) {
-            howl.play()
+            const nextSoundId = _soundId != null ? howl.play(_soundId) : howl.play()
+            bindSoundId(howl, nextSoundId)
           }
           if (!autoPlayBlockNoticeShown) {
             autoPlayBlockNoticeShown = true
@@ -273,8 +298,8 @@ export function useRadioPlayer() {
         },
       })
 
-      howl.play()
       _howl = howl
+      _soundId = howl.play()
       playerLog('howlRef → Howl id=', item.id, 'type=', item.item_type)
     },
     [queue.length],
@@ -312,6 +337,7 @@ export function useRadioPlayer() {
         playerLog('howlRef → null (queue empty cleanup)')
         destroyHowl(_howl)
         _howl = null
+        _soundId = null
         sharedAudioEl.current = null
       }
       if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
@@ -440,6 +466,7 @@ export function useRadioPlayer() {
     if (_howl) {
       destroyHowl(_howl)
       _howl = null
+      _soundId = null
       sharedAudioEl.current = null
     }
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
@@ -477,11 +504,12 @@ export function useRadioPlayer() {
       html5: true,
       volume: store.volume,
       format: ['mp3'],
-      onplay: () => {
+      onplay: (soundId) => {
+        bindSoundId(howl, soundId)
         if (prevGen !== prevGenerationRef.current) return  // F3: generation guard
         clearLoadTimer()
         // F3: Expose audio element for visualizer
-        const audioNode = (howl as any)._sounds?.[0]?._node as HTMLAudioElement | undefined
+        const audioNode = getSoundNode(howl, _soundId)
         if (audioNode) sharedAudioEl.current = audioNode
         setIsAudioLoading(false)
         setIsPlaying(true)
@@ -490,7 +518,8 @@ export function useRadioPlayer() {
         recordListenEvent(lastSong.id, 'started')
         if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
         progressRef.current = setInterval(() => {
-          const seek = howl.seek() as number
+          const audioNode = getSoundNode(howl, _soundId)
+          const seek = audioNode ? audioNode.currentTime : howlSeek(howl, _soundId)
           setCurrentTime(seek)
           radioWS.send({ type: 'progress_report', queue_item_id: lastSong.id, position_seconds: seek })
         }, 1000)
@@ -503,6 +532,7 @@ export function useRadioPlayer() {
         howl.unload()
         if (_howl === howl) {
           _howl = null
+          _soundId = null
           sharedAudioEl.current = null
         }
         setIsPlaying(false)
@@ -517,6 +547,7 @@ export function useRadioPlayer() {
         setIsPlaying(false)
         setCurrentTime(0)
         setDuration(0)
+        clearSoundId(howl)
         if (progressRef.current) {
           clearInterval(progressRef.current)
           progressRef.current = undefined
@@ -535,6 +566,7 @@ export function useRadioPlayer() {
         setIsPlaying(false)
         if (_howl === howl) {
           _howl = null
+          _soundId = null
           sharedAudioEl.current = null
         }
         // F2: Restore queue position on error
@@ -546,12 +578,13 @@ export function useRadioPlayer() {
         if (prevGen !== prevGenerationRef.current) return
         playerLog('[Player] previous onunlock — retrying play for id:', lastSong.id)
         if (_howl === howl && !howl.playing()) {
-          howl.play()
+          const nextSoundId = _soundId != null ? howl.play(_soundId) : howl.play()
+          bindSoundId(howl, nextSoundId)
         }
       },
     })
     _howl = howl
-    howl.play()
+    _soundId = howl.play()
     setCurrentItem(lastSong)
 
     setTimeout(() => { isSkippingRef.current = false }, 300)
@@ -559,12 +592,19 @@ export function useRadioPlayer() {
 
   const togglePause = useCallback(() => {
     if (!_howl) return
-    // F5: Use Howl.playing() for ground-truth state, not store which can drift
-    if (_howl.playing()) {
-      _howl.pause()
+    const activeSoundId = _soundId
+    const isPlaying = activeSoundId != null ? _howl.playing(activeSoundId) : _howl.playing()
+    if (isPlaying) {
+      if (activeSoundId != null) _howl.pause(activeSoundId)
+      else _howl.pause()
       setIsPlaying(false)
     } else {
-      _howl.play()
+      const savedPosition = activeSoundId != null ? howlSeek(_howl, activeSoundId) : useStore.getState().currentTime
+      const nextSoundId = activeSoundId != null ? _howl.play(activeSoundId) : _howl.play()
+      bindSoundId(_howl, nextSoundId)
+      if (savedPosition > 0.05) {
+        _howl.seek(savedPosition, nextSoundId)
+      }
       setIsPlaying(true)
     }
   }, [setIsPlaying])
@@ -575,6 +615,7 @@ export function useRadioPlayer() {
     if (_howl) {
       destroyHowl(_howl)
       _howl = null
+      _soundId = null
       sharedAudioEl.current = null
     }
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = undefined }
@@ -592,7 +633,8 @@ export function useRadioPlayer() {
 
   const seek = useCallback((time: number) => {
     if (_howl) {
-      _howl.seek(time)
+      if (_soundId != null) _howl.seek(time, _soundId)
+      else _howl.seek(time)
       setCurrentTime(time)
     }
   }, [setCurrentTime])

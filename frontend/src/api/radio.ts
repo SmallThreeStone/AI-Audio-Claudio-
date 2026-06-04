@@ -56,6 +56,16 @@ export async function getTtsProvider() {
   return data.provider as string
 }
 
+export async function getTtsStatus() {
+  const { data } = await api.get('/settings/tts-status')
+  return data as {
+    provider: 'edge' | 'fish'
+    fish_configured: boolean
+    fish_reference_voice: boolean
+    effective_provider: 'edge' | 'fish'
+  }
+}
+
 export async function setTtsProvider(provider: 'edge' | 'fish') {
   await api.post('/settings/tts-provider', { provider })
 }

@@ -16,6 +16,7 @@ from .models.user import User
 from .routers import auth, playlists, songs, radio, audio, ws, dlna, calendar, admin, analytics, ai_material
 from .services.sidecar_manager import sidecar
 from .utils.auth import AuthMiddleware
+from . import config
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,26 @@ async def get_tts_provider(request: Request):
         result = await session.execute(select(User).where(User.id == user_id))
         user = result.scalar()
         return {"provider": user.tts_provider if user else "edge"}
+
+
+@app.get("/api/settings/tts-status")
+async def get_tts_status(request: Request):
+    """Expose non-secret TTS capability status for settings UI."""
+    configured = bool(config.FISH_AUDIO_API_KEY and config.FISH_AUDIO_API_KEY != "your_api_key_here")
+    has_reference_voice = bool(config.FISH_AUDIO_REFERENCE_ID)
+    user_id = getattr(request.state, "user_id", None)
+    provider = "edge"
+    if user_id:
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar()
+            provider = user.tts_provider if user else "edge"
+    return {
+        "provider": provider,
+        "fish_configured": configured,
+        "fish_reference_voice": has_reference_voice,
+        "effective_provider": "fish" if provider == "fish" and configured else "edge",
+    }
 
 
 @app.post("/api/settings/tts-provider")
