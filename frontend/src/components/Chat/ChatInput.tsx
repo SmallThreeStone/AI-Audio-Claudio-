@@ -202,31 +202,41 @@ export default function ChatInput() {
         </div>
       )}
 
-      <div className="dj-command-bar">
-        <input
-          ref={inputRef}
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="例如：来几首梁博，别太吵，适合晚上开车"
-          disabled={isSubmitting || isGenerating}
-          className="dj-command-input"
-        />
-        <VoiceInput onResult={(voiceText) => setText((prev) => prev ? `${prev} ${voiceText}` : voiceText)} />
-        <button
-          onClick={() => handleSubmit()}
-          disabled={isSubmitting || isGenerating || !text.trim()}
-          className="dj-command-submit"
-        >
-          {isSubmitting || isGenerating ? (
-            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
-          )}
-        </button>
+      <div className="dj-command-field">
+        <div className="dj-command-field__label">
+          <span>开播指令</span>
+          <em>输入后会生成电台并开始播放</em>
+        </div>
+        <div className="dj-command-bar">
+          <input
+            ref={inputRef}
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="说心情或点歌：来几首梁博，别太吵，适合晚上开车"
+            disabled={isSubmitting || isGenerating}
+            className="dj-command-input"
+          />
+          <VoiceInput onResult={(voiceText) => setText((prev) => prev ? `${prev} ${voiceText}` : voiceText)} />
+          <button
+            onClick={() => handleSubmit()}
+            disabled={isSubmitting || isGenerating || !text.trim()}
+            className="dj-command-submit"
+            title="生成电台并开播"
+          >
+            {isSubmitting || isGenerating ? (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5 text-[#001411]" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                <span>开播</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="dj-control-strip">

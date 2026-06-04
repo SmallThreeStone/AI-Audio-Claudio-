@@ -34,7 +34,7 @@ export default function AIMaterialStation({
         setResults([])
         setSignals([])
       } else {
-        setMessage(result.message || `找到 ${result.found} 首候选，新加入 ${result.added} 首`)
+        setMessage(`${result.message || `找到 ${result.found} 首候选，新加入 ${result.added} 首`} 这里只补充素材，不会打断当前播放。`)
         setResults(result.songs || [])
         setSignals([
           result.intent.artist ? `艺人 ${result.intent.artist}` : '',
@@ -56,10 +56,10 @@ export default function AIMaterialStation({
     <section className={`ai-material-station ${compact ? 'ai-material-station--compact' : ''}`}>
       <div className="ai-material-station__head">
         <div>
-          <span>AI 找歌</span>
-          <strong>说一句想找什么，我会去网易云补充到你的素材池</strong>
+          <span>素材补给站</span>
+          <strong>只搜索并加入素材池，不会直接开播</strong>
         </div>
-        <em>免登录可用</em>
+        <em>补素材</em>
       </div>
 
       <div className="ai-material-station__bar">
@@ -67,13 +67,16 @@ export default function AIMaterialStation({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') runExpand() }}
-          placeholder="比如：找梁博，适合晚上开车"
+          placeholder="搜索歌曲/艺人/场景：梁博、雨天、安静男声"
           disabled={loading}
         />
         <button onClick={() => runExpand()} disabled={loading || !text.trim()}>
-          {loading ? '找' : '补歌'}
+          {loading ? '搜索中' : '加入素材池'}
         </button>
       </div>
+      <p className="ai-material-station__note">
+        想马上播放，请用上面的“开播指令”。
+      </p>
 
       {!compact && (
         <div className="ai-material-presets">
