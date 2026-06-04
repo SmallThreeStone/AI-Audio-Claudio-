@@ -46,15 +46,15 @@ export default function PublicMusicImport({ onImported }: { onImported?: () => v
   return (
     <div className="public-import-card">
       <div className="public-import-card__head">
-        <span>免登录素材</span>
-        <strong>不用绑定账号，也能先建立 AI 曲库；公开歌曲会尝试播放，受版权限制时自动跳过</strong>
+        <span>公开素材导入</span>
+        <strong>把公开歌单或搜索结果收进 AI 候选库；真正播放由开播台统一编排</strong>
       </div>
 
       <div className="public-import-row">
         <input
           value={playlistUrl}
           onChange={(e) => setPlaylistUrl(e.target.value)}
-          placeholder="粘贴网易云公开歌单链接或 ID"
+          placeholder="粘贴网易云公开歌单链接或 ID，导入为候选库"
         />
         <button onClick={handleImport} disabled={loading || !playlistUrl.trim()}>
           导入
@@ -66,7 +66,7 @@ export default function PublicMusicImport({ onImported }: { onImported?: () => v
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
-          placeholder="搜索网易云歌曲 / 艺人，比如 梁博"
+          placeholder="搜索网易云歌曲或艺人，只加入候选库"
         />
         <button onClick={handleSearch} disabled={loading || !query.trim()}>
           搜索

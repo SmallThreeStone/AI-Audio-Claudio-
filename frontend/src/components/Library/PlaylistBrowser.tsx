@@ -95,8 +95,8 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
     <div className={hideHeader ? 'playlist-library playlist-library--embedded' : 'playlist-library'}>
       <div className="playlist-library__header">
         <div>
-          <span>网易云歌单</span>
-          <h3>AI 素材库</h3>
+          <span>AI 候选库</span>
+          <h3>歌单与搜索素材</h3>
         </div>
         <button
           onClick={handleSync}
@@ -109,7 +109,13 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
 
       {playlists.length > 0 && (
         <>
-          <AIMaterialStation onExpanded={loadPlaylists} />
+          <div className="playlist-material-zone">
+            <div className="playlist-section-title">
+              <span>素材扩展</span>
+              <em>补歌只进入候选库，不会打断当前电台</em>
+            </div>
+            <AIMaterialStation onExpanded={loadPlaylists} />
+          </div>
           <LibraryHealthPanel playlists={playlists} profile={profile} compact={hideHeader} />
           <div className="playlist-library__stats">
             <div>
@@ -148,22 +154,34 @@ export default function PlaylistBrowser({ hideHeader }: { hideHeader?: boolean }
       )}
 
       {playlists.length > 0 && (
-        <div className="playlist-filter-row">
-          {GENRE_TAGS.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setActiveTag(tag)}
-              className={activeTag === tag ? 'active' : ''}
-            >
-              {tag}
-            </button>
-          ))}
+        <div className="playlist-list-section">
+          <div className="playlist-section-title">
+            <span>已同步歌单</span>
+            <em>{activeTag === '全部' ? `${filtered.length} 个歌单参与 AI 召回` : `${activeTag} · ${filtered.length} 个歌单`}</em>
+          </div>
+          <div className="playlist-filter-row">
+            {GENRE_TAGS.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setActiveTag(tag)}
+                className={activeTag === tag ? 'active' : ''}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {playlists.length === 0 && !syncing ? (
         <div className="playlist-empty-state">
-          <AIMaterialStation onExpanded={loadPlaylists} />
+          <div className="playlist-material-zone">
+            <div className="playlist-section-title">
+              <span>先补候选歌曲</span>
+              <em>无需绑定网易云也能让 AI 有素材可选</em>
+            </div>
+            <AIMaterialStation onExpanded={loadPlaylists} />
+          </div>
           <PublicMusicImport onImported={loadPlaylists} />
           <button
             onClick={handleSync}

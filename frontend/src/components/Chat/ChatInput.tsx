@@ -204,8 +204,8 @@ export default function ChatInput() {
 
       <div className="dj-command-field">
         <div className="dj-command-field__label">
-          <span>开播指令</span>
-          <em>输入后会生成电台并开始播放</em>
+          <span>开播台</span>
+          <em>这里输入会让 AI 生成节目单并开始播放</em>
         </div>
         <div className="dj-command-bar">
           <input
@@ -214,7 +214,7 @@ export default function ChatInput() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="说心情或点歌：来几首梁博，别太吵，适合晚上开车"
+            placeholder="输入心情、场景或点歌：来几首梁博，适合晚上开车"
             disabled={isSubmitting || isGenerating}
             className="dj-command-input"
           />
@@ -250,8 +250,8 @@ export default function ChatInput() {
       {showIdle && (
         <div className="scene-channel-strip">
           <div>
-            <span>AI 场景频道</span>
-            <em>一键把时间、场景和能量交给 DJ 编排</em>
+            <span>一键开播</span>
+            <em>直接交给 AI DJ 编排并播放</em>
           </div>
           <div className="scene-channel-strip__list">
             {SCENE_CHANNELS.map((channel) => (
