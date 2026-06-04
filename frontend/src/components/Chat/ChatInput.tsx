@@ -11,7 +11,6 @@ const COMMAND_TYPES = [
   { label: '心情开播', hint: '生成一整档节目', example: '下雨天，想听松一点的华语歌' },
   { label: '点名艺人', hint: '优先命中艺人', example: '来一档梁博夜路频道' },
   { label: '改变方向', hint: '播放中可调整', example: '保留氛围，但节奏提起来' },
-  { label: '找歌补素材', hint: '先同步歌单', example: '缺歌时去素材补给站刷新' },
 ]
 
 const QUICK_PROMPTS = [
@@ -200,12 +199,8 @@ export default function ChatInput() {
             key={type.label}
             type="button"
             onClick={() => {
-              if (type.label === '找歌补素材') {
-                setText(type.example)
-              } else {
-                setActiveCommand(type)
-                setText(type.example)
-              }
+              setActiveCommand(type)
+              setText(type.example)
             }}
             className={activeCommand.label === type.label ? 'active' : ''}
             title={type.hint}
@@ -314,8 +309,6 @@ export default function ChatInput() {
         </div>
       )}
 
-      {showIdle && <AIMaterialStation compact />}
-
       {isGenerating && (
         <div className="signal-generation-card">
           <div>
@@ -379,6 +372,8 @@ export default function ChatInput() {
           )}
         </div>
       )}
+
+      {showIdle && <AIMaterialStation compact collapsed />}
 
     </div>
   )

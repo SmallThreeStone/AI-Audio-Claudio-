@@ -11,12 +11,15 @@ const MATERIAL_PRESETS = [
 
 export default function AIMaterialStation({
   compact,
+  collapsed,
   onExpanded,
 }: {
   compact?: boolean
+  collapsed?: boolean
   onExpanded?: () => void
 }) {
   const [text, setText] = useState('')
+  const [isOpen, setIsOpen] = useState(!collapsed)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [results, setResults] = useState<Song[]>([])
@@ -43,6 +46,7 @@ export default function AIMaterialStation({
           result.intent.energy ? `能量 ${energyLabel(result.intent.energy)}` : '',
         ].filter(Boolean))
         setText('')
+        setIsOpen(true)
         onExpanded?.()
       }
     } catch {
@@ -53,32 +57,43 @@ export default function AIMaterialStation({
   }
 
   return (
-    <section className={`ai-material-station ${compact ? 'ai-material-station--compact' : ''}`}>
+    <section className={`ai-material-station ${compact ? 'ai-material-station--compact' : ''} ${isOpen ? 'ai-material-station--open' : 'ai-material-station--collapsed'}`}>
       <div className="ai-material-station__head">
         <div>
           <span>素材补给站</span>
-          <strong>只搜索并加入素材池，不会直接开播</strong>
+          <strong>{isOpen ? '只搜索并加入素材池，不会直接开播' : '缺歌或想扩充风格时再用，不影响开播'}</strong>
         </div>
-        <em>补素材</em>
-      </div>
-
-      <div className="ai-material-station__bar">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') runExpand() }}
-          placeholder="搜索歌曲/艺人/场景：梁博、雨天、安静男声"
-          disabled={loading}
-        />
-        <button onClick={() => runExpand()} disabled={loading || !text.trim()}>
-          {loading ? '搜索中' : '加入素材池'}
+        <button
+          type="button"
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="ai-material-station__toggle"
+          aria-expanded={isOpen}
+        >
+          {isOpen ? '收起' : '缺歌？补素材'}
         </button>
       </div>
-      <p className="ai-material-station__note">
-        想马上播放，请用上面的“开播指令”。
-      </p>
 
-      {!compact && (
+      {isOpen && (
+        <>
+          <div className="ai-material-station__bar">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') runExpand() }}
+              placeholder="搜索歌曲/艺人/场景：梁博、雨天、安静男声"
+              disabled={loading}
+            />
+            <button onClick={() => runExpand()} disabled={loading || !text.trim()}>
+              {loading ? '搜索中' : '加入素材池'}
+            </button>
+          </div>
+          <p className="ai-material-station__note">
+            想马上播放，请用上面的“开播指令”。
+          </p>
+        </>
+      )}
+
+      {isOpen && !compact && (
         <div className="ai-material-presets">
           {MATERIAL_PRESETS.map((preset) => (
             <button key={preset} onClick={() => runExpand(preset)} disabled={loading}>
@@ -88,7 +103,7 @@ export default function AIMaterialStation({
         </div>
       )}
 
-      {(message || signals.length > 0) && (
+      {isOpen && (message || signals.length > 0) && (
         <div className="ai-material-feedback">
           {signals.length > 0 && (
             <div className="ai-material-signals">
@@ -99,7 +114,7 @@ export default function AIMaterialStation({
         </div>
       )}
 
-      {results.length > 0 && (
+      {isOpen && results.length > 0 && (
         <div className="ai-material-results">
           {results.slice(0, compact ? 3 : 5).map((song) => (
             <div key={song.id}>
