@@ -160,8 +160,8 @@ export default function ChatInput() {
   const showIdle = !isGenerating && !isSubmitting
   const isBound = user?.login_status === 'logged_in'
   const showDemoEntry = demoAvailable && !isBound && !demoMode
-  const promptTitle = promptSource === 'ai' ? 'AI 场景指令' : promptSource === 'context' ? '场景指令' : promptSource === 'loading' ? '正在生成场景指令' : '可直接交给 DJ 的指令'
-  const promptHint = promptSource === 'ai' ? '已读取时间、天气和你的曲库偏好' : promptSource === 'context' ? '根据当前场景和曲库生成' : promptSource === 'loading' ? '读取时间、天气和曲库信号' : '先用这些开播，随后会学习你的偏好'
+  const promptTitle = promptSource === 'loading' ? '正在生成此刻建议' : '此刻建议'
+  const promptHint = promptSource === 'ai' ? '根据时间、天气和曲库偏好生成' : promptSource === 'context' ? '根据当前场景和曲库生成' : promptSource === 'loading' ? '读取时间、天气和曲库信号' : '可直接交给 DJ 开播'
 
   return (
     <div className="dj-console-input">
@@ -293,22 +293,6 @@ export default function ChatInput() {
         ))}
       </div>
 
-      {showIdle && (
-        <div className="scene-channel-strip">
-          <div>
-            <span>AI 场景频道</span>
-            <em>一键把时间、场景和能量交给 DJ 编排</em>
-          </div>
-          <div className="scene-channel-strip__list">
-            {SCENE_CHANNELS.map((channel) => (
-              <button key={channel.name} onClick={() => handleSubmit(channel.prompt)}>
-                {channel.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {isGenerating && (
         <div className="signal-generation-card">
           <div>
@@ -336,14 +320,35 @@ export default function ChatInput() {
 
       {/* Quick prompts — personalized when available */}
       {showIdle && (
-        <div className={`signal-suggestion-block ${promptsLoaded ? '' : 'signal-suggestion-block--loading'}`}>
-          <div className="signal-suggestion-title">
-            <span />
+        <div className={`start-inspiration ${promptsLoaded ? '' : 'start-inspiration--loading'}`}>
+          <div className="start-inspiration__head">
             <div>
-              <p>{promptTitle}</p>
+              <span>开播灵感</span>
+              <strong>选一个频道，或直接采用 AI 给你的此刻建议</strong>
+            </div>
+          </div>
+
+          <div className="start-inspiration__section">
+            <div className="start-inspiration__label">
+              <span>常用频道</span>
+              <em>固定场景，点击即开播</em>
+            </div>
+            <div className="scene-channel-strip__list">
+              {SCENE_CHANNELS.map((channel) => (
+                <button key={channel.name} onClick={() => handleSubmit(channel.prompt)}>
+                  {channel.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="start-inspiration__section">
+            <div className="start-inspiration__label">
+              <span>{promptTitle}</span>
               <em>{promptHint}</em>
             </div>
           </div>
+
           {contextBadges.length > 0 && (
             <div className="signal-context-row">
               {contextBadges.map((badge) => (
@@ -364,7 +369,7 @@ export default function ChatInput() {
               ))}
             </div>
           ) : (
-            <div className="signal-loading-row" aria-label="正在生成场景指令">
+            <div className="signal-loading-row" aria-label="正在生成此刻建议">
               <span />
               <span />
               <span />

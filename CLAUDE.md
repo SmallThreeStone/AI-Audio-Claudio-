@@ -103,7 +103,7 @@ cd frontend && npm run dev
 
 ## 当前版本
 
-V7.1.3 — AI DJ 控制台层级收敛
+V7.1.4 — 开播灵感合并
 
 ## 环境要求
 
