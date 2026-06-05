@@ -60,6 +60,10 @@ function getSoundNode(howl: Howl, soundId?: number | null) {
     || sounds.find(s => s._node)?._node
 }
 
+function getActiveAudioNode() {
+  return _howl ? getSoundNode(_howl, _soundId) : null
+}
+
 function howlSeek(howl: Howl, soundId?: number | null) {
   const seek = soundId != null ? howl.seek(soundId) : howl.seek()
   return typeof seek === 'number' ? seek : 0
@@ -599,19 +603,29 @@ export function useRadioPlayer() {
   const togglePause = useCallback(() => {
     if (!_howl) return
     const activeSoundId = _soundId
-    const isPlaying = activeSoundId != null ? _howl.playing(activeSoundId) : _howl.playing()
+    const audioNode = getActiveAudioNode()
+    const isPlaying = audioNode ? !audioNode.paused : activeSoundId != null ? _howl.playing(activeSoundId) : _howl.playing()
     if (isPlaying) {
-      if (activeSoundId != null) _howl.pause(activeSoundId)
+      if (audioNode) audioNode.pause()
+      else if (activeSoundId != null) _howl.pause(activeSoundId)
       else _howl.pause()
       setIsPlaying(false)
     } else {
-      const savedPosition = activeSoundId != null ? howlSeek(_howl, activeSoundId) : useStore.getState().currentTime
-      const nextSoundId = activeSoundId != null ? _howl.play(activeSoundId) : _howl.play()
-      bindSoundId(_howl, nextSoundId)
-      if (savedPosition > 0.05) {
-        _howl.seek(savedPosition, nextSoundId)
+      const savedPosition = audioNode?.currentTime || (activeSoundId != null ? howlSeek(_howl, activeSoundId) : useStore.getState().currentTime)
+      if (audioNode) {
+        if (savedPosition > 0.05) audioNode.currentTime = savedPosition
+        audioNode.play()
+          .then(() => setIsPlaying(true))
+          .catch(() => {
+            setIsPlaying(false)
+            useStore.getState().setNotice('播放被浏览器阻止，请再点一次播放')
+          })
+      } else {
+        const nextSoundId = activeSoundId != null ? _howl.play(activeSoundId) : _howl.play()
+        bindSoundId(_howl, nextSoundId)
+        if (savedPosition > 0.05) _howl.seek(savedPosition, nextSoundId)
+        setIsPlaying(true)
       }
-      setIsPlaying(true)
     }
   }, [setIsPlaying])
 
@@ -639,7 +653,9 @@ export function useRadioPlayer() {
 
   const seek = useCallback((time: number) => {
     if (_howl) {
-      if (_soundId != null) _howl.seek(time, _soundId)
+      const audioNode = getActiveAudioNode()
+      if (audioNode) audioNode.currentTime = time
+      else if (_soundId != null) _howl.seek(time, _soundId)
       else _howl.seek(time)
       setCurrentTime(time)
     }
