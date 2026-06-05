@@ -8,9 +8,10 @@ interface Props {
   onStop: () => void
   onTogglePause: () => void
   onSeek: (time: number) => void
+  onOpenImmersive?: () => void
 }
 
-export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePause, onSeek }: Props) {
+export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePause, onSeek, onOpenImmersive }: Props) {
   const { volume, isPlaying, isAudioLoading, session, setVolume, queue, playHistory, currentItem } = useStore()
   const prevVolumeRef = useRef(volume)
 
@@ -76,6 +77,16 @@ export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePau
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
         </button>
+
+        {onOpenImmersive && (
+          <button
+            onClick={onOpenImmersive}
+            className="player-controls__immersive"
+            title="进入歌词播放页"
+          >
+            歌词
+          </button>
+        )}
       </div>
 
       {/* Volume */}

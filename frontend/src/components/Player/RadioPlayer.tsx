@@ -2,7 +2,6 @@ import { useStore } from '../../store'
 import { useRadioPlayer } from '../../hooks/useRadioPlayer'
 import VinylDisc from './VinylDisc'
 import AudioWaveform from './AudioWaveform'
-import LyricPanel from './LyricPanel'
 import AmbientBackground from './AmbientBackground'
 import NowPlaying from './NowPlaying'
 import PlayerControls from './PlayerControls'
@@ -13,7 +12,8 @@ import PlayHistory from './PlayHistory'
 import ShareCard from './ShareCard'
 import AIDispatchPanel from './AIDispatchPanel'
 import BroadcastDirector from './BroadcastDirector'
-import { useEffect } from 'react'
+import ImmersivePlayer from './ImmersivePlayer'
+import { useEffect, useState } from 'react'
 
 const STAGES = [
   { key: 'analyzing', label: '分析心情' },
@@ -24,6 +24,7 @@ const STAGES = [
 export default function RadioPlayer() {
   const { session, queue, currentIndex, isPlaying, isAudioLoading, isGenerating, currentItem, generationStage, generationMessage, notice, setNotice } = useStore()
   const { skip, skipTo, stop, togglePause, seek, previous } = useRadioPlayer()
+  const [immersiveOpen, setImmersiveOpen] = useState(false)
 
   // Auto-clear notice after 8 seconds
   useEffect(() => {
@@ -85,7 +86,14 @@ export default function RadioPlayer() {
           </div>
         )}
 
-        <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
+        <PlayerControls
+          onSkip={skip}
+          onPrevious={previous}
+          onStop={stop}
+          onTogglePause={togglePause}
+          onSeek={seek}
+          onOpenImmersive={() => setImmersiveOpen(true)}
+        />
       </div>
 
       <div className="radio-player-insights">
@@ -188,7 +196,6 @@ export default function RadioPlayer() {
           </div>
         )}
 
-        <LyricPanel />
         <div className="desktop-player-secondary">
           <NowPlaying />
           <UpNext onSkipTo={skipTo} />
@@ -202,6 +209,16 @@ export default function RadioPlayer() {
           <SleepTimer />
         </div>
       </div>
+
+      <ImmersivePlayer
+        open={immersiveOpen}
+        onClose={() => setImmersiveOpen(false)}
+        onSkip={skip}
+        onPrevious={previous}
+        onStop={stop}
+        onTogglePause={togglePause}
+        onSeek={seek}
+      />
     </div>
   )
 }

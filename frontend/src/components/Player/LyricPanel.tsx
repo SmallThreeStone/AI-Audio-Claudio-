@@ -3,13 +3,17 @@ import { useStore } from '../../store'
 import { parseLRC, findActiveLyricIndex } from '../../utils/lyrics'
 import api from '../../api/client'
 
-export default function LyricPanel() {
+interface Props {
+  mode?: 'compact' | 'full'
+}
+
+export default function LyricPanel({ mode = 'compact' }: Props) {
   const { currentItem, currentTime, lyrics, activeLyricIndex, setLyrics, setActiveLyricIndex } =
     useStore()
   const listRef = useRef<HTMLDivElement>(null)
   const fetchedSongIdRef = useRef<number | null>(null)
   const [lyricLoading, setLyricLoading] = useState(false)
-  const [immersive, setImmersive] = useState(false)
+  const immersive = mode === 'full'
 
   const isTTS = currentItem?.item_type?.startsWith('tts')
   const songId = currentItem?.song_id
@@ -118,9 +122,7 @@ export default function LyricPanel() {
 
   return (
     <div className={`lyric-panel glass-panel rounded-xl ${immersive ? 'lyric-panel--immersive overflow-y-auto scrollbar-hide' : 'lyric-panel--compact'}`} ref={listRef}>
-      <button className="lyric-panel__mode" onClick={() => setImmersive(!immersive)}>
-        {immersive ? '收起歌词' : '展开歌词'}
-      </button>
+      {mode === 'compact' && <div className="lyric-panel__mode">歌词预览</div>}
       <div className="lyric-list">
         {/* Top padding for centering first line */}
         {immersive && <div className="lyric-spacer" />}

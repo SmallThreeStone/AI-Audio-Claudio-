@@ -89,9 +89,12 @@ cd frontend && npm run dev
 
 - **只能通过 git 拉取代码**：`cd /data/claudio && git pull`，禁止 SFTP/SCP 上传单个文件
 - **只能通过 Docker Compose 启动**，禁止在容器外运行任何项目进程
-- 部署流程：本地 commit + push → SSH 到服务器 → `git pull` → `docker compose down && docker compose up -d --build`
+- **常规代码更新优先热更新，不默认重建镜像**：本地 commit + push → SSH 到服务器 → 进入正在运行的 Docker 容器 → 在容器内 `git pull` 最新代码 → 重启容器内项目进程或重启该容器即可
+- **不要为了普通代码修改执行 `docker compose down && docker compose up -d --build`**：后端 Python 代码、小范围运行时代码、无需重新打包的资源变更，优先用容器内 pull + restart，减少停机和构建时间
+- **必须重建镜像的情况**：`frontend/` 源码或静态构建产物变化、`package.json`/`package-lock.json`、`requirements.txt`、Dockerfile、docker-compose.yml、Node/Python 版本、系统依赖、构建脚本、镜像内路径结构发生变化时，执行 `docker compose down && docker compose up -d --build`
 - **Docker 架构：单容器**。frontend 是静态文件、backend + sidecar 紧耦合必须同主机 localhost 通信，拆多容器只增加复杂度无收益
-- **代码或前端资源变更必须重建镜像**：后端代码、前端 dist、依赖、Dockerfile 任一变化，都执行 `docker compose down && docker compose up -d --build`
+- **容器内热更新前置检查**：先确认服务器 git 工作区干净、当前分支正确、目标 commit 与远端一致；pull 后必须确认实际 HEAD 等于本地已推送 commit
+- **容器内热更新后置检查**：重启后必须验证 `docker compose ps`、`/api/health`、公网首页 200；涉及播放逻辑时还要验证至少一次开播和切歌
 - **仅配置/数据变更不必重建镜像**：只改 `.env`、数据库、缓存、运行时数据时，用 `docker compose restart` 或 `docker compose up -d`
 - **不按版本区分镜像**：每次 build 覆盖 `claudio-claudio-fm:latest`，不搞版本 tag，避免镜像堆积
 
@@ -103,7 +106,7 @@ cd frontend && npm run dev
 
 ## 当前版本
 
-V7.1.6 — 主控台常驻与歌单优先修复
+V7.2 — 沉浸播放页与进度控制修复
 
 ## 环境要求
 
