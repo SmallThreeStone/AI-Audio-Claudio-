@@ -44,158 +44,163 @@ export default function RadioPlayer() {
     <div className="radio-player-stage">
       <AmbientBackground />
 
-      <div className="radio-artwork-zone">
-        <div className="orbit-ring orbit-ring--outer" />
-        <div className="orbit-ring orbit-ring--inner" />
-        <div className="radio-artwork-card">
-          {coverUrl ? (
-            <img src={coverUrl} alt="" className="radio-artwork-image" />
-          ) : (
-            <div className="radio-artwork-fallback">
-              <span>iRadio</span>
+      <div className="radio-nowplaying-core">
+        <div className="radio-artwork-zone">
+          <div className="orbit-ring orbit-ring--outer" />
+          <div className="orbit-ring orbit-ring--inner" />
+          <div className="radio-artwork-card">
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="radio-artwork-image" />
+            ) : (
+              <div className="radio-artwork-fallback">
+                <span>iRadio</span>
+              </div>
+            )}
+            <div className="radio-artwork-bars">
+              {Array.from({ length: 13 }).map((_, i) => <span key={i} />)}
             </div>
-          )}
-          <div className="radio-artwork-bars">
-            {Array.from({ length: 13 }).map((_, i) => <span key={i} />)}
+          </div>
+          <div className="relative vinyl-stage">
+            <VinylDisc />
+            <AudioWaveform />
           </div>
         </div>
-        <div className="relative vinyl-stage">
-          <VinylDisc />
-          <AudioWaveform />
+
+        <div className="radio-title-block">
+          <p className="radio-title-kicker">{isGenerating ? generationMessage || '正在调频' : session?.session_theme || 'iRadio 待机频道'}</p>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
         </div>
+
+        {isIdle && (
+          <div className="radio-standby-card">
+            <div>
+              <span>当前状态</span>
+              <strong>待机</strong>
+            </div>
+            <div>
+              <span>推荐操作</span>
+              <strong>从左侧输入心情开始</strong>
+            </div>
+          </div>
+        )}
+
+        <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
       </div>
 
-      <div className="radio-title-block">
-        <p className="radio-title-kicker">{isGenerating ? generationMessage || '正在调频' : session?.session_theme || 'iRadio 待机频道'}</p>
-        <h1>{title}</h1>
-        <p>{subtitle}</p>
-      </div>
+      <div className="radio-player-insights">
 
-      {isIdle && (
-        <div className="radio-standby-card">
-          <div>
-            <span>当前状态</span>
-            <strong>待机</strong>
-          </div>
-          <div>
-            <span>推荐操作</span>
-            <strong>从左侧输入心情开始</strong>
-          </div>
-        </div>
-      )}
-
-      <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
-
-      {isGenerating && (
-        <div className="radio-generation-panel">
-          <p>
-            {generationMessage || '深空探测扫描中...'}
-          </p>
-          <div className="radio-generation-dots">
-            {STAGES.map((s, i) => (
-              <div key={s.key}>
-                <div
-                  className={`radio-generation-dot ${
-                    i < activeStageIdx
-                      ? 'is-done'
-                      : i === activeStageIdx
-                        ? 'is-active'
-                        : ''
-                  }`}
-                />
-                {i < STAGES.length - 1 && (
+        {isGenerating && (
+          <div className="radio-generation-panel">
+            <p>
+              {generationMessage || '深空探测扫描中...'}
+            </p>
+            <div className="radio-generation-dots">
+              {STAGES.map((s, i) => (
+                <div key={s.key}>
                   <div
-                    className={`radio-generation-line ${
-                      i < activeStageIdx ? 'is-done' : ''
+                    className={`radio-generation-dot ${
+                      i < activeStageIdx
+                        ? 'is-done'
+                        : i === activeStageIdx
+                          ? 'is-active'
+                          : ''
                     }`}
                   />
-                )}
-              </div>
-            ))}
+                  {i < STAGES.length - 1 && (
+                    <div
+                      className={`radio-generation-line ${
+                        i < activeStageIdx ? 'is-done' : ''
+                      }`}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="radio-generation-labels">
+              {STAGES.map((s, i) => (
+                <span
+                  key={s.key}
+                  className={
+                    i <= activeStageIdx ? 'is-lit' : ''
+                  }
+                >
+                  {s.label}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="radio-generation-labels">
-            {STAGES.map((s, i) => (
-              <span
-                key={s.key}
-                className={
-                  i <= activeStageIdx ? 'is-lit' : ''
-                }
-              >
-                {s.label}
-              </span>
-            ))}
+        )}
+
+        {session?.session_theme && (
+          <div className="radio-channel-card">
+            <div>
+              <span>当前频道</span>
+              <strong>{session.session_theme}</strong>
+              <p>AI DJ 会围绕这个方向持续编排，可随时换心情调整。</p>
+            </div>
+            <button
+              onClick={stop}
+              title="切换频道"
+              className="radio-channel-card__switch"
+            >
+              切换频道 ↻
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {session?.session_theme && (
-        <div className="radio-channel-card">
-          <div>
-            <span>当前频道</span>
-            <strong>{session.session_theme}</strong>
-            <p>AI DJ 会围绕这个方向持续编排，可随时换心情调整。</p>
+        {session?.weather_summary && (
+          <div className="text-[11px] text-[var(--color-radio-muted)] bg-white/5 rounded-full px-3 py-0.5 backdrop-blur-sm">
+            {session.weather_summary}
           </div>
-          <button
-            onClick={stop}
-            title="切换频道"
-            className="radio-channel-card__switch"
-          >
-            切换频道 ↻
-          </button>
-        </div>
-      )}
+        )}
 
-      {session?.weather_summary && (
-        <div className="text-[11px] text-[var(--color-radio-muted)] bg-white/5 rounded-full px-3 py-0.5 backdrop-blur-sm">
-          {session.weather_summary}
-        </div>
-      )}
+        {(session || isGenerating) && (
+          <AIDispatchPanel
+            session={session}
+            queue={queue}
+            currentItem={currentItem}
+            isGenerating={isGenerating}
+            generationStage={generationStage}
+            generationMessage={generationMessage}
+          />
+        )}
 
-      {(session || isGenerating) && (
-        <AIDispatchPanel
-          session={session}
+        <BroadcastDirector
           queue={queue}
           currentItem={currentItem}
-          isGenerating={isGenerating}
-          generationStage={generationStage}
-          generationMessage={generationMessage}
+          currentIndex={currentIndex}
+          isPlaying={isPlaying}
+          isAudioLoading={isAudioLoading}
         />
-      )}
 
-      <BroadcastDirector
-        queue={queue}
-        currentItem={currentItem}
-        currentIndex={currentIndex}
-        isPlaying={isPlaying}
-        isAudioLoading={isAudioLoading}
-      />
+        {notice && (
+          <div className="flex items-center gap-2 text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full pl-3 pr-1.5 py-1">
+            <span>{notice}</span>
+            <button
+              onClick={() => setNotice(null)}
+              className="w-4 h-4 rounded-full bg-[var(--color-radio-gold)]/20 flex items-center justify-center hover:bg-[var(--color-radio-gold)]/40 transition-colors"
+            >
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
-      {notice && (
-        <div className="flex items-center gap-2 text-xs text-[var(--color-radio-gold)] bg-[var(--color-radio-gold)]/10 rounded-full pl-3 pr-1.5 py-1">
-          <span>{notice}</span>
-          <button
-            onClick={() => setNotice(null)}
-            className="w-4 h-4 rounded-full bg-[var(--color-radio-gold)]/20 flex items-center justify-center hover:bg-[var(--color-radio-gold)]/40 transition-colors"
-          >
-            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <LyricPanel />
+        <div className="desktop-player-secondary">
+          <NowPlaying />
+          <UpNext onSkipTo={skipTo} />
         </div>
-      )}
 
-      <LyricPanel />
-      <div className="desktop-player-secondary">
-        <NowPlaying />
-        <UpNext onSkipTo={skipTo} />
-      </div>
-
-      {/* Tools row */}
-      <div className="player-toolbelt">
-        <PlayHistory />
-        <ShareCard />
-        <SpeakerSelector />
-        <SleepTimer />
+        {/* Tools row */}
+        <div className="player-toolbelt">
+          <PlayHistory />
+          <ShareCard />
+          <SpeakerSelector />
+          <SleepTimer />
+        </div>
       </div>
     </div>
   )
