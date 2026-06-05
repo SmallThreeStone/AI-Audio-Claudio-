@@ -285,9 +285,14 @@ body::before {
   align-items: center;
   justify-content: flex-start;
   padding: 12px 26px 10px;
-  overflow: hidden;
+  overflow-y: auto;
   overflow-x: hidden;
   border-left: 1px solid rgba(24, 246, 210, 0.12);
+  scrollbar-width: none;
+}
+
+.radio-console__right::-webkit-scrollbar {
+  display: none;
 }
 
 .console-panel {
