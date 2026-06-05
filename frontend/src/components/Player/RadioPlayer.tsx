@@ -65,6 +65,27 @@ export default function RadioPlayer() {
         </div>
       </div>
 
+      <div className="radio-title-block">
+        <p className="radio-title-kicker">{isGenerating ? generationMessage || '正在调频' : session?.session_theme || 'iRadio 待机频道'}</p>
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+      </div>
+
+      {isIdle && (
+        <div className="radio-standby-card">
+          <div>
+            <span>当前状态</span>
+            <strong>待机</strong>
+          </div>
+          <div>
+            <span>推荐操作</span>
+            <strong>从左侧输入心情开始</strong>
+          </div>
+        </div>
+      )}
+
+      <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
+
       {isGenerating && (
         <div className="radio-generation-panel">
           <p>
@@ -162,27 +183,6 @@ export default function RadioPlayer() {
           </button>
         </div>
       )}
-
-      <div className="radio-title-block">
-        <p className="radio-title-kicker">{isGenerating ? generationMessage || '正在调频' : session?.session_theme || 'iRadio 待机频道'}</p>
-        <h1>{title}</h1>
-        <p>{subtitle}</p>
-      </div>
-
-      {isIdle && (
-        <div className="radio-standby-card">
-          <div>
-            <span>当前状态</span>
-            <strong>待机</strong>
-          </div>
-          <div>
-            <span>推荐操作</span>
-            <strong>从左侧输入心情开始</strong>
-          </div>
-        </div>
-      )}
-
-      <PlayerControls onSkip={skip} onPrevious={previous} onStop={stop} onTogglePause={togglePause} onSeek={seek} />
 
       <LyricPanel />
       <div className="desktop-player-secondary">

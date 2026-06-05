@@ -20,7 +20,7 @@ export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePau
   if (!session || !hasPlayableItems) return null
 
   return (
-    <div className="w-full space-y-3">
+    <div className="player-controls">
       {/* Wave progress bar */}
       <WaveProgressBar onSeek={onSeek} />
 
