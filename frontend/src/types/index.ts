@@ -78,6 +78,10 @@ export interface AIIntent {
     strict_artist?: boolean
     selected_playlist_names?: string[]
     external_search_count?: number
+    search_material_fallback_count?: number
+    playlist_preference?: boolean
+    playlist_only?: boolean
+    external_search_allowed?: boolean
     source_breakdown?: {
       playlist_material: number
       search_material: number

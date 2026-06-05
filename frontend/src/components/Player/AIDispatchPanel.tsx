@@ -65,9 +65,16 @@ export default function AIDispatchPanel({
   const sourceText = meta?.library_total
     ? `全量 ${meta.library_total} 首 → 候选 ${meta.candidate_count || 0} 首`
     : '全量曲库召回'
+  const sourceModeText = meta?.playlist_only
+    ? '仅我的歌单'
+    : meta?.playlist_preference
+      ? '歌单优先'
+      : '本地素材优先'
   const searchText = meta?.external_search_count
     ? `网易云补歌 ${meta.external_search_count} 首`
-    : '本地素材优先'
+    : meta?.search_material_fallback_count
+      ? `搜索素材兜底 ${meta.search_material_fallback_count} 首`
+      : sourceModeText
   const interpretedSignals = [
     interpreted?.artists?.length ? `艺人 ${interpreted.artists.join('/')}` : '',
     interpreted?.scenes?.length ? `场景 ${interpreted.scenes.join('/')}` : '',
@@ -146,7 +153,17 @@ export default function AIDispatchPanel({
             </div>
             <div>
               <span>外部补歌</span>
-              <strong>{meta?.external_search_count ? `网易云搜索补入 ${meta.external_search_count} 首` : '优先使用已有素材'}</strong>
+              <strong>
+                {meta?.external_search_count
+                  ? `网易云搜索补入 ${meta.external_search_count} 首`
+                  : meta?.search_material_fallback_count
+                    ? `真实歌单不足，搜索素材兜底 ${meta.search_material_fallback_count} 首`
+                    : meta?.playlist_only
+                      ? '已关闭外部补歌'
+                      : meta?.playlist_preference
+                        ? '优先使用你的真实歌单'
+                        : '优先使用已有素材'}
+              </strong>
             </div>
             <div>
               <span>播放弧线</span>

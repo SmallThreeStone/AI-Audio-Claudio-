@@ -11,13 +11,13 @@ interface Props {
 }
 
 export default function PlayerControls({ onSkip, onPrevious, onStop, onTogglePause, onSeek }: Props) {
-  const { volume, isPlaying, isAudioLoading, session, setVolume, queue, playHistory } = useStore()
+  const { volume, isPlaying, isAudioLoading, session, setVolume, queue, playHistory, currentItem } = useStore()
   const prevVolumeRef = useRef(volume)
 
-  const hasPlayableItems = queue.some(
-    (item) => item.status === 'ready'
+  const hasControllableProgram = Boolean(
+    session || currentItem || queue.some((item) => item.status !== 'skipped' && item.status !== 'completed')
   )
-  if (!session || !hasPlayableItems) return null
+  if (!hasControllableProgram) return null
 
   return (
     <div className="player-controls">

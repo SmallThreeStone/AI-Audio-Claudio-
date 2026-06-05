@@ -14,6 +14,7 @@ from ..models.listening_history import ListeningHistory
 from ..services.public_library_service import search_and_attach_songs
 
 logger = logging.getLogger(__name__)
+SEARCH_MATERIAL_PLAYLIST_ID = -900000000
 DJ_PERSONAS = {
     "xiaoyu": {
         "name": "小雨",
@@ -322,7 +323,7 @@ async def generate_continuation(db: AsyncSession, original_request: str, recentl
     return _parse_json_response(text)
 
 
-def _user_library_query(user_id: int | None):
+def _user_library_query(user_id: int | None, include_search_material: bool = True, only_search_material: bool = False):
     query = select(Song)
     if user_id is not None:
         query = (
@@ -332,26 +333,51 @@ def _user_library_query(user_id: int | None):
             .where(Playlist.user_id == user_id)
             .distinct()
         )
+        if only_search_material:
+            query = query.where(Playlist.netease_playlist_id <= SEARCH_MATERIAL_PLAYLIST_ID)
+        elif not include_search_material:
+            query = query.where(or_(Playlist.netease_playlist_id.is_(None), Playlist.netease_playlist_id > SEARCH_MATERIAL_PLAYLIST_ID))
     return query
+
+
+def _library_source_policy(user_request: str) -> dict:
+    strict_markers = [
+        "只用我的歌单", "只放我的歌单", "只从我的歌单", "只用我的曲库", "只放我的曲库",
+        "不要外部", "不要补歌", "不补歌", "别补歌", "不要搜索", "不搜歌", "别搜",
+    ]
+    prefer_markers = [
+        "优先我的歌单", "优先我的曲库", "优先本地", "优先歌单", "先用我的歌单",
+        "从我的歌单里", "从我歌单里", "用我的歌单", "我的歌单优先", "本地素材优先",
+    ]
+    playlist_only = any(marker in user_request for marker in strict_markers)
+    prefer_playlist = playlist_only or any(marker in user_request for marker in prefer_markers)
+    return {
+        "prefer_playlist": prefer_playlist,
+        "playlist_only": playlist_only,
+        "allow_external_search": not prefer_playlist and not playlist_only,
+        "allow_search_material_fallback": prefer_playlist and not playlist_only,
+    }
 
 
 async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: int = 140, exclude_ids: list[int] | None = None, user_id: int | None = None):
     mood_keywords = _extract_mood_keywords(user_request)
     strict_artist = _is_strict_artist_request(user_request)
+    source_policy = _library_source_policy(user_request)
+    primary_include_search = not (source_policy["prefer_playlist"] or source_policy["playlist_only"])
 
-    library_query = _user_library_query(user_id)
+    library_query = _user_library_query(user_id, include_search_material=primary_include_search)
     if exclude_ids:
         library_query = library_query.where(Song.id.notin_(exclude_ids))
     all_library_songs = (await db.execute(library_query)).scalars().all()
 
     artist_names = _extract_artist_names(user_request, all_library_songs)
     recent_song_ids = await _recent_song_ids(db, user_id)
-    playlist_context = await _song_playlist_context(db, user_id)
-    playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords)
+    playlist_context = await _song_playlist_context(db, user_id, include_search_material=primary_include_search)
+    playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords, include_search_material=primary_include_search)
     excluded = set(exclude_ids or [])
 
     query = (
-        _user_library_query(user_id)
+        _user_library_query(user_id, include_search_material=primary_include_search)
         .where(
             or_(Song.has_playable_url == True, Song.last_url_fetch == None),
         )
@@ -361,16 +387,17 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
 
     all_candidates = (await db.execute(query)).scalars().all()
     external_search_count = 0
+    search_material_fallback_count = 0
 
     if artist_names:
         artist_match_ids = {s.id for s in all_candidates if any(a in (s.artist or "") for a in artist_names)}
-        if user_id and len(artist_match_ids) < 3:
+        if source_policy["allow_external_search"] and user_id and len(artist_match_ids) < 3:
             for name in artist_names[:2]:
                 fetched = await search_and_attach_songs(db, user_id, name, limit=12)
                 external_search_count += len(fetched)
             all_library_songs = (await db.execute(library_query)).scalars().all()
-            playlist_context = await _song_playlist_context(db, user_id)
-            playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords)
+            playlist_context = await _song_playlist_context(db, user_id, include_search_material=primary_include_search)
+            playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords, include_search_material=primary_include_search)
             all_candidates = (await db.execute(query)).scalars().all()
             artist_match_ids = {s.id for s in all_candidates if any(a in (s.artist or "") for a in artist_names)}
         artist_matches = [s for s in all_candidates if s.id in artist_match_ids]
@@ -381,12 +408,12 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         if len(songs) < limit:
             songs.extend(other_songs[:limit - len(songs)])
     else:
-        if user_id and len(all_candidates) < 12 and user_request.strip():
+        if source_policy["allow_external_search"] and user_id and len(all_candidates) < 12 and user_request.strip():
             fetched = await search_and_attach_songs(db, user_id, user_request, limit=12)
             external_search_count += len(fetched)
             all_library_songs = (await db.execute(library_query)).scalars().all()
-            playlist_context = await _song_playlist_context(db, user_id)
-            playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords)
+            playlist_context = await _song_playlist_context(db, user_id, include_search_material=primary_include_search)
+            playlist_names = await _matching_playlist_names(db, user_id, user_request, mood_keywords, include_search_material=primary_include_search)
             all_candidates = (await db.execute(query)).scalars().all()
         songs = _select_diverse_candidates(all_candidates, user_request, mood_keywords, recent_song_ids, playlist_context, limit)
 
@@ -394,7 +421,7 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         existing_ids = {s.id for s in songs}
         existing_ids.update(excluded)
         extra_query = (
-            _user_library_query(user_id)
+            _user_library_query(user_id, include_search_material=primary_include_search)
             .where(
                 Song.id.notin_(existing_ids),
                 or_(Song.has_playable_url == True, Song.last_url_fetch == None),
@@ -403,6 +430,22 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         )
         extra = (await db.execute(extra_query)).scalars().all()
         songs.extend(_select_diverse_candidates(extra, user_request, mood_keywords, recent_song_ids, playlist_context, limit - len(songs)))
+
+    if user_id and source_policy["allow_search_material_fallback"] and len(songs) < 6 and not (artist_names and strict_artist):
+        existing_ids = {s.id for s in songs}
+        existing_ids.update(excluded)
+        fallback_query = (
+            _user_library_query(user_id, only_search_material=True)
+            .where(
+                Song.id.notin_(existing_ids),
+                or_(Song.has_playable_url == True, Song.last_url_fetch == None),
+            )
+            .limit(6 - len(songs))
+        )
+        fallback = (await db.execute(fallback_query)).scalars().all()
+        fallback_songs = _select_diverse_candidates(fallback, user_request, mood_keywords, recent_song_ids, playlist_context, 6 - len(songs))
+        search_material_fallback_count = len(fallback_songs)
+        songs.extend(fallback_songs)
 
     candidate_meta = {
         "library_total": len(all_library_songs),
@@ -414,6 +457,10 @@ async def _get_song_candidates(db: AsyncSession, user_request: str = "", limit: 
         "strict_artist": bool(artist_names and strict_artist),
         "selected_playlist_names": playlist_names[:3],
         "external_search_count": external_search_count,
+        "search_material_fallback_count": search_material_fallback_count,
+        "playlist_preference": source_policy["prefer_playlist"],
+        "playlist_only": source_policy["playlist_only"],
+        "external_search_allowed": source_policy["allow_external_search"],
         "source_breakdown": await _source_breakdown(db, user_id),
         "interpreted_request": _interpreted_request(user_request, artist_names, mood_keywords),
         "playback_plan": _playback_plan(user_request, artist_names, mood_keywords),
@@ -496,15 +543,18 @@ async def _recent_song_ids(db: AsyncSession, user_id: int | None, limit: int = 8
     return {row[0] for row in result.all() if row[0]}
 
 
-async def _song_playlist_context(db: AsyncSession, user_id: int | None) -> dict[int, str]:
+async def _song_playlist_context(db: AsyncSession, user_id: int | None, include_search_material: bool = True) -> dict[int, str]:
     if user_id is None:
         return {}
-    result = await db.execute(
+    query = (
         select(playlist_song_table.c.song_id, Playlist.name, Playlist.description)
         .select_from(playlist_song_table)
         .join(Playlist, playlist_song_table.c.playlist_id == Playlist.id)
         .where(Playlist.user_id == user_id)
     )
+    if not include_search_material:
+        query = query.where(or_(Playlist.netease_playlist_id.is_(None), Playlist.netease_playlist_id > SEARCH_MATERIAL_PLAYLIST_ID))
+    result = await db.execute(query)
     context: dict[int, list[str]] = {}
     for song_id, name, desc in result.all():
         parts = [name or "", desc or ""]
@@ -512,16 +562,19 @@ async def _song_playlist_context(db: AsyncSession, user_id: int | None) -> dict[
     return {song_id: " ".join(parts) for song_id, parts in context.items()}
 
 
-async def _matching_playlist_names(db: AsyncSession, user_id: int | None, user_request: str, mood_keywords: list[str]) -> list[str]:
+async def _matching_playlist_names(db: AsyncSession, user_id: int | None, user_request: str, mood_keywords: list[str], include_search_material: bool = True) -> list[str]:
     if user_id is None:
         return []
     terms = set(_request_terms(user_request)) | set(mood_keywords)
     if not terms:
         return []
-    result = await db.execute(
+    query = (
         select(Playlist.name, Playlist.description)
         .where(Playlist.user_id == user_id)
     )
+    if not include_search_material:
+        query = query.where(or_(Playlist.netease_playlist_id.is_(None), Playlist.netease_playlist_id > SEARCH_MATERIAL_PLAYLIST_ID))
+    result = await db.execute(query)
     matches = []
     for name, desc in result.all():
         text = f"{name or ''} {desc or ''}".lower()
@@ -726,17 +779,25 @@ def _enforce_artist_selection(script: dict, songs: list, artist_names: list[str]
 def _attach_ai_intent(script: dict, user_request: str, artist_names: list[str], artist_matched_ids: set[int], candidate_meta: dict | None = None) -> dict:
     candidate_meta = candidate_meta or {}
     if not artist_names:
+        strategy = "仅我的歌单" if candidate_meta.get("playlist_only") else "歌单优先" if candidate_meta.get("playlist_preference") else "心情画像优先"
+        message = (
+            "已按你的要求只从真实歌单素材里编排，不会外部补歌。"
+            if candidate_meta.get("playlist_only")
+            else "已优先从你的真实歌单素材里选歌，素材不足时才少量兜底。"
+            if candidate_meta.get("playlist_preference")
+            else "AI 将根据你的心情和听歌画像选歌。"
+        )
         script["ai_intent"] = {
             "raw_request": user_request,
             "detected_artists": [],
             "match_count": 0,
             "fallback_count": 0,
             "coverage": "none",
-            "strategy": "心情画像优先",
+            "strategy": strategy,
             "signals": _intent_signals(user_request, []),
             "confidence": "medium",
             "candidate_meta": candidate_meta,
-            "message": "AI 将根据你的心情和听歌画像选歌。",
+            "message": message,
         }
         return script
 
